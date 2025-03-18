@@ -1,0 +1,18 @@
+[package]
+name = "rustii"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "rustii"
+path = "src/bin/rustii/main.rs"
+
+[lib]
+path = "src/lib.rs"
+test = true
+doc = true
+
+[dependencies]
+byteorder = "1"
+cbc = "0"
+aes = "0"
