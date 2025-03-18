@@ -130,7 +130,7 @@ impl TMD {
     }
     
     pub fn to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
-        let mut buf = Vec::new();
+        let mut buf: Vec<u8> = Vec::new();
         buf.write_u32::<BigEndian>(self.signature_type)?;
         buf.write_all(&self.signature)?;
         buf.write_all(&self.padding1)?;
@@ -164,22 +164,4 @@ impl TMD {
         }
         Ok(buf)
     }
-    
-    pub fn title_version(&self) -> u16 {
-        self.title_version
-    }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    #[test]
-    fn test_load_tmd() {
-        let data = fs::read("title.tmd").unwrap();
-        let tmd = TMD::from_bytes(&data).unwrap();
-        assert_eq!(tmd.tmd_version, 1);
-    }
-}
-

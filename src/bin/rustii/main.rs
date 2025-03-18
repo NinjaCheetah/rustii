@@ -1,5 +1,5 @@
 use std::fs;
-use rustii::title::{tmd, ticket, crypto};
+use rustii::title::{tmd, ticket, content};
 
 fn main() {
     let data = fs::read("title.tmd").unwrap();
@@ -15,7 +15,14 @@ fn main() {
     println!("title key (dec): {:?}", tik.dec_title_key());
     assert_eq!(data, tik.to_vec().unwrap());
     
+    let data = fs::read("content-blob").unwrap();
+    let content_region = content::ContentRegion::from_bytes(&data, tmd.content_records).unwrap();
+    assert_eq!(data, content_region.to_bytes().unwrap());
+    println!("content OK");
     
-    assert_eq!(tik.title_key, crypto::encrypt_title_key(tik.dec_title_key(), tik.common_key_index, tik.title_id));
-    println!("re-encrypted key matched");
+    let content_dec = content_region.get_content_by_index(0, tik.dec_title_key()).unwrap();
+    println!("content dec from index: {:?}", content_dec);
+    
+    let content = content_region.get_content_by_cid(150, tik.dec_title_key()).unwrap();
+    println!("content dec from cid: {:?}", content);
 }
