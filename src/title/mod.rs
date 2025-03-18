@@ -6,3 +6,4 @@ pub mod content;
 pub mod crypto;
 pub mod ticket;
 pub mod tmd;
+pub mod wad;

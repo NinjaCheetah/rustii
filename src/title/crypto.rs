@@ -39,9 +39,19 @@ pub fn decrypt_content(data: &[u8], title_key: [u8; 16], index: u16) -> Vec<u8> 
     let mut iv = Vec::from(index.to_be_bytes());
     iv.resize(16, 0);
     type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
-    println!("{:?}", iv);
     let decryptor = Aes128CbcDec::new(&title_key.into(), iv.as_slice().into());
     let mut buf = data.to_owned();
     decryptor.decrypt_padded_mut::<ZeroPadding>(&mut buf).unwrap();
+    buf
+}
+
+// Encrypt content using a Title Key.
+pub fn encrypt_content(data: &[u8], title_key: [u8; 16], index: u16, size: u64) -> Vec<u8> {
+    let mut iv = Vec::from(index.to_be_bytes());
+    iv.resize(16, 0);
+    type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
+    let encryptor = Aes128CbcEnc::new(&title_key.into(), iv.as_slice().into());
+    let mut buf = data.to_owned();
+    encryptor.encrypt_padded_mut::<ZeroPadding>(&mut buf, size as usize).unwrap();
     buf
 }

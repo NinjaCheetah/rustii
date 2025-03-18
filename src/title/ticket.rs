@@ -118,7 +118,7 @@ impl Ticket {
         })
     }
 
-    pub fn to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, std::io::Error> {
         let mut buf: Vec<u8> = Vec::new();
         buf.write_u32::<BigEndian>(self.signature_type)?;
         buf.write_all(&self.signature)?;
