@@ -10,13 +10,15 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  build-linux-x86:
 
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
     # Not sure if this is the best choice, but I'm building in release mode to produce more effective nightly binaries.
+    - name: Update Toolchain
+      run: rustup update
     - name: Build rustii
       run: cargo build --verbose --release
     - name: Package rustii for Upload
@@ -29,3 +31,63 @@ jobs:
       with:
         path: ~/rustii.tar
         name: rustii-Linux-bin
+
+  build-macos-arm64:
+    
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Required Toolchain
+      run: rustup toolchain install stable-aarch64-apple-darwin
+    - name: Build rustii
+      run: cargo +stable-aarch64-apple-darwin build --verbose --release
+    - name: Package rustii for Upload
+      run: |
+        mv target/release/rustii ~/rustii
+        cd ~
+        tar cvf rustii.tar rustii
+    - name: Upload rustii
+      uses: actions/upload-artifact@v4
+      with:
+        path: ~/rustii.tar
+        name: rustii-macOS-arm64-bin
+
+  build-macos-x86_64:
+    
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Required Toolchain
+      run: rustup toolchain install stable-x86_64-apple-darwin
+    - name: Build rustii
+      run: cargo +stable-x86_64-apple-darwin build --verbose --release
+    - name: Package rustii for Upload
+      run: |
+        mv target/release/rustii ~/rustii
+        cd ~
+        tar cvf rustii.tar rustii
+    - name: Upload rustii
+      uses: actions/upload-artifact@v4
+      with:
+        path: ~/rustii.tar
+        name: rustii-macOS-x86_64-bin
+
+  build-windows:
+    
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Update Toolchain
+      run: rustup update
+    - name: Build rustii
+      run: cargo build --verbose --release
+    - name: Upload rustii
+      uses: actions/upload-artifact@v4
+      with:
+        path: D:\a\rustii\rustii\target\release\rustii.exe
+        name: rustii-Windows-bin
+
+      
