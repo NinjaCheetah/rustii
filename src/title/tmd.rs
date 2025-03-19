@@ -7,6 +7,7 @@ use std::io::{Cursor, Read, Write};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct ContentRecord {
     pub content_id: u32,
     pub index: u16,
@@ -44,6 +45,7 @@ pub struct TMD {
 }
 
 impl TMD {
+    /// Creates a new TMD instance from the binary data of a TMD file.
     pub fn from_bytes(data: &[u8]) -> Result<Self, std::io::Error> {
         let mut buf = Cursor::new(data);
         let signature_type = buf.read_u32::<BigEndian>()?;
@@ -129,6 +131,7 @@ impl TMD {
         })
     }
     
+    /// Dumps the data in a TMD back into binary data that can be written to a file.
     pub fn to_bytes(&self) -> Result<Vec<u8>, std::io::Error> {
         let mut buf: Vec<u8> = Vec::new();
         buf.write_u32::<BigEndian>(self.signature_type)?;

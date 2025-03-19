@@ -52,6 +52,9 @@ pub fn encrypt_content(data: &[u8], title_key: [u8; 16], index: u16, size: u64) 
     type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
     let encryptor = Aes128CbcEnc::new(&title_key.into(), iv.as_slice().into());
     let mut buf = data.to_owned();
+    let size = (size + 15) & !15;
+    buf.resize(size as usize, 0);
     encryptor.encrypt_padded_mut::<ZeroPadding>(&mut buf, size as usize).unwrap();
+    buf.resize(size as usize, 0);
     buf
 }

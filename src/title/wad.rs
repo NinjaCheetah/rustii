@@ -8,6 +8,7 @@ use std::fmt;
 use std::str;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use crate::title::{tmd, ticket, content};
 
 #[derive(Debug)]
 pub enum WADError {
@@ -28,7 +29,7 @@ impl fmt::Display for WADError {
 impl Error for WADError {}
 
 #[derive(Debug)]
-pub enum WADTypes {
+pub enum WADType {
     Installable,
     ImportBoot
 }
@@ -42,7 +43,7 @@ pub struct WAD {
 #[derive(Debug)]
 pub struct WADHeader {
     pub header_size: u32,
-    pub wad_type: WADTypes,
+    pub wad_type: WADType,
     pub wad_version: u16,
     cert_chain_size: u32,
     crl_size: u32,
@@ -63,6 +64,53 @@ pub struct WADBody {
     meta: Vec<u8>,
 }
 
+impl WADHeader {
+    pub fn from_body(body: &WADBody) -> Result<WADHeader, WADError> {
+        // Generates a new WADHeader from a populated WADBody object.
+        // Parse the TMD and use that to determine if this is a standard WAD or a boot2 WAD.
+        let tmd = tmd::TMD::from_bytes(&body.tmd).map_err(WADError::IOError)?;
+        let wad_type = match hex::encode(tmd.title_id).as_str() {
+            "0000000100000001" => WADType::ImportBoot,
+            _ => WADType::Installable,
+        };
+        // Find the sizes of all components of the Title.
+        let cert_chain_size = body.cert_chain.len() as u32;
+        let crl_size = body.crl.len() as u32;
+        let ticket_size = body.ticket.len() as u32;
+        let tmd_size = body.tmd.len() as u32;
+        let content_size = body.content.len() as u32;
+        let meta_size = body.meta.len() as u32;
+        let header = WADHeader {
+            header_size: 32,
+            wad_type,
+            wad_version: 0, // This is always officially a zero.
+            cert_chain_size,
+            crl_size,
+            ticket_size,
+            tmd_size,
+            content_size,
+            meta_size,
+            padding: [0; 32],
+        };
+        Ok(header)
+    }
+}
+
+impl WADBody {
+    pub fn from_parts(cert_chain: &[u8], crl: &[u8], ticket: &ticket::Ticket, tmd: &tmd::TMD, 
+                      content: &content::ContentRegion, meta: &[u8]) -> Result<WADBody, WADError> {
+        let body = WADBody {
+            cert_chain: cert_chain.to_vec(),
+            crl: crl.to_vec(),
+            ticket: ticket.to_bytes().map_err(WADError::IOError)?,
+            tmd: tmd.to_bytes().map_err(WADError::IOError)?,
+            content: content.to_bytes().map_err(WADError::IOError)?,
+            meta: meta.to_vec(),
+        };
+        Ok(body)
+    }
+}
+
 impl WAD {
     pub fn from_bytes(data: &[u8]) -> Result<WAD, WADError> {
         let mut buf = Cursor::new(data);
@@ -71,8 +119,8 @@ impl WAD {
         buf.read_exact(&mut wad_type).map_err(WADError::IOError)?;
         let wad_type = match str::from_utf8(&wad_type) {
             Ok(wad_type) => match wad_type {
-                "Is" => WADTypes::Installable,
-                "ib" => WADTypes::ImportBoot,
+                "Is" => WADType::Installable,
+                "ib" => WADType::ImportBoot,
                 _ => return Err(WADError::BadType),
             },
             Err(_) => return Err(WADError::BadType),
@@ -141,13 +189,24 @@ impl WAD {
         };
         Ok(wad)
     }
+    
+    pub fn from_parts(cert_chain: &[u8], crl: &[u8], ticket: &ticket::Ticket, tmd: &tmd::TMD,
+                      content: &content::ContentRegion, meta: &[u8]) -> Result<WAD, WADError> {
+        let body = WADBody::from_parts(cert_chain, crl, ticket, tmd, content, meta)?;
+        let header = WADHeader::from_body(&body)?;
+        let wad = WAD {
+            header,
+            body,
+        };
+        Ok(wad)
+    }
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, WADError> {
         let mut buf = Vec::new();
         buf.write_u32::<BigEndian>(self.header.header_size).map_err(WADError::IOError)?;
         match self.header.wad_type {
-            WADTypes::Installable => { buf.write("Is".as_bytes()).map_err(WADError::IOError)?; },
-            WADTypes::ImportBoot => { buf.write("ib".as_bytes()).map_err(WADError::IOError)?; },
+            WADType::Installable => { buf.write("Is".as_bytes()).map_err(WADError::IOError)?; },
+            WADType::ImportBoot => { buf.write("ib".as_bytes()).map_err(WADError::IOError)?; },
         }
         buf.write_u16::<BigEndian>(self.header.wad_version).map_err(WADError::IOError)?;
         buf.write_u32::<BigEndian>(self.header.cert_chain_size).map_err(WADError::IOError)?;
@@ -177,24 +236,54 @@ impl WAD {
     pub fn cert_chain(&self) -> Vec<u8> {
         self.body.cert_chain.clone()
     }
+    
+    pub fn set_cert_chain(&mut self, cert_chain: &[u8]) {
+        self.body.cert_chain = cert_chain.to_vec();
+        self.header.cert_chain_size = cert_chain.len() as u32;
+    }
 
     pub fn crl(&self) -> Vec<u8> {
         self.body.crl.clone()
+    }
+    
+    pub fn set_crl(&mut self, crl: &[u8]) {
+        self.body.crl = crl.to_vec();
+        self.header.crl_size = crl.len() as u32;
     }
 
     pub fn ticket(&self) -> Vec<u8> {
         self.body.ticket.clone()
     }
+    
+    pub fn set_ticket(&mut self, ticket: &[u8]) {
+        self.body.ticket = ticket.to_vec();
+        self.header.ticket_size = ticket.len() as u32;
+    }
 
     pub fn tmd(&self) -> Vec<u8> {
         self.body.tmd.clone()
+    }
+    
+    pub fn set_tmd(&mut self, tmd: &[u8]) {
+        self.body.tmd = tmd.to_vec();
+        self.header.tmd_size = tmd.len() as u32;
     }
 
     pub fn content(&self) -> Vec<u8> {
         self.body.content.clone()
     }
+    
+    pub fn set_content(&mut self, content: &[u8]) {
+        self.body.content = content.to_vec();
+        self.header.content_size = content.len() as u32;
+    }
 
     pub fn meta(&self) -> Vec<u8> {
         self.body.meta.clone()
+    }
+    
+    pub fn set_meta(&mut self, meta: &[u8]) {
+        self.body.meta = meta.to_vec();
+        self.header.meta_size = meta.len() as u32;
     }
 }

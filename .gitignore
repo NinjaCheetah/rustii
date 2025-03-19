@@ -21,3 +21,5 @@ target/
 *.tmd
 *.tik
 *.cert
+*.footer
+*.app

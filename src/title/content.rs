@@ -8,7 +8,7 @@ use std::fmt;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use sha1::{Sha1, Digest};
 use crate::title::tmd::ContentRecord;
-use crate::title::crypto::decrypt_content;
+use crate::title::crypto;
 
 #[derive(Debug)]
 pub enum ContentError {
@@ -40,6 +40,8 @@ pub struct ContentRegion {
 }
 
 impl ContentRegion {
+    /// Creates a ContentRegion instance that can be used to parse and edit content stored in a 
+    /// digital Wii title from the content area of a WAD and the ContentRecords from a TMD.
     pub fn from_bytes(data: &[u8], content_records: Vec<ContentRecord>) -> Result<Self, std::io::Error> {
         let content_region_size = data.len() as u32;
         let num_contents = content_records.len() as u16;
@@ -76,6 +78,24 @@ impl ContentRegion {
         })
     }
     
+    /// Creates a ContentRegion instance from the ContentRecords of a TMD that contains no actual
+    /// content. This can be used to load existing content from files.
+    pub fn new(content_records: Vec<ContentRecord>) -> Result<Self, ContentError> {
+        let content_region_size: u64 = content_records.iter().map(|x| (x.content_size + 63) & !63).sum();
+        let content_region_size = content_region_size as u32;
+        let num_contents = content_records.len() as u16;
+        let content_start_offsets: Vec<u64> = Vec::new();
+        let mut contents: Vec<Vec<u8>> = Vec::new();
+        contents.resize(num_contents as usize, Vec::new());
+        Ok(ContentRegion {
+            content_records,
+            content_region_size,
+            num_contents,
+            content_start_offsets,
+            contents,
+        })
+    }
+    
     pub fn to_bytes(&self) -> Result<Vec<u8>, std::io::Error> {
         let mut buf: Vec<u8> = Vec::new();
         for i in 0..self.num_contents {
@@ -95,7 +115,7 @@ impl ContentRegion {
     pub fn get_content_by_index(&self, index: usize, title_key: [u8; 16]) -> Result<Vec<u8>, ContentError> {
         let content = self.get_enc_content_by_index(index)?;
         // Verify the hash of the decrypted content against its record.
-        let mut content_dec = decrypt_content(&content, title_key, self.content_records[index].index);
+        let mut content_dec = crypto::decrypt_content(&content, title_key, self.content_records[index].index);
         content_dec.resize(self.content_records[index].content_size as usize, 0);
         let mut hasher = Sha1::new();
         hasher.update(content_dec.clone());
@@ -124,5 +144,22 @@ impl ContentRegion {
         } else {
             Err(ContentError::CIDNotFound)
         }
+    }
+    
+    pub fn load_content(&mut self, content: &[u8], index: usize, title_key: [u8; 16]) -> Result<(), ContentError> {
+        if index >= self.content_records.len() {
+            return Err(ContentError::IndexNotFound);
+        }
+        // Hash the content we're trying to load to ensure it matches the hash expected in the
+        // matching record.
+        let mut hasher = Sha1::new();
+        hasher.update(content);
+        let result = hasher.finalize();
+        if result[..] != self.content_records[index].content_hash {
+            return Err(ContentError::BadHash);
+        }
+        let content_enc = crypto::encrypt_content(content, title_key, self.content_records[index].index, self.content_records[index].content_size);
+        self.contents[index] = content_enc;
+        Ok(())
     }
 }
