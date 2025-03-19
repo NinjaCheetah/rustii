@@ -1,0 +1,31 @@
+name: Build rustii
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    # Not sure if this is the best choice, but I'm building in release mode to produce more effective nightly binaries.
+    - name: Build rustii
+      run: cargo build --verbose --release
+    - name: Package rustii for Upload
+      run: |
+        mv target/release/rustii ~/rustii
+        cd ~
+        tar cvf rustii.tar rustii
+    - name: Upload rustii
+      uses: actions/upload-artifact@v4
+      with:
+        path: ~/rustii.tar
+        name: rustii-Linux-bin
