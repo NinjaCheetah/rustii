@@ -1,5 +1,5 @@
-// title/tik.rs from rustii-lib (c) 2025 NinjaCheetah & Contributors
-// https://github.com/NinjaCheetah/rustii-lib
+// title/tik.rs from rustii (c) 2025 NinjaCheetah & Contributors
+// https://github.com/NinjaCheetah/rustii
 //
 // Implements the structures and methods required for Ticket parsing and editing.
 

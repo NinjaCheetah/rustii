@@ -1,37 +1,45 @@
-// Sample file for testing rustii library stuff.
+// main.rs from rustii (c) 2025 NinjaCheetah & Contributors
+// https://github.com/NinjaCheetah/rustii
+//
+// Base for the rustii CLI that handles argument parsing and directs execution to the proper module.
 
-use std::fs;
-use rustii::title::{tmd, ticket, content, crypto, wad};
+mod title;
+use clap::{Subcommand, Parser};
+use title::wad;
+
+
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+#[command(arg_required_else_help = true)]
+enum Commands {
+    /// Pack/unpack/edit a WAD file
+    Wad {
+        #[command(subcommand)]
+        command: Option<wad::Commands>,
+    },
+}
 
 fn main() {
-    let data = fs::read("sm.wad").unwrap();
-    let wad = wad::WAD::from_bytes(&data).unwrap();
-    println!("size of tmd: {:?}", wad.tmd().len());
-    let tmd = tmd::TMD::from_bytes(&wad.tmd()).unwrap();
-    println!("num content records: {:?}", tmd.content_records.len());
-    println!("first record data: {:?}", tmd.content_records.first().unwrap());
-    assert_eq!(wad.tmd(), tmd.to_bytes().unwrap());
+    let cli = Cli::parse();
     
-    let tik = ticket::Ticket::from_bytes(&wad.ticket()).unwrap();
-    println!("title version from ticket is: {:?}", tik.title_version);
-    println!("title key (enc): {:?}", tik.title_key);
-    println!("title key (dec): {:?}", tik.dec_title_key());
-    assert_eq!(wad.ticket(), tik.to_bytes().unwrap());
-    
-    let content_region = content::ContentRegion::from_bytes(&wad.content(), tmd.content_records).unwrap();
-    assert_eq!(wad.content(), content_region.to_bytes().unwrap());
-    println!("content OK");
-    
-    let content_dec = content_region.get_content_by_index(0, tik.dec_title_key()).unwrap();
-    println!("content dec from index: {:?}", content_dec);
-    
-    let content = content_region.get_enc_content_by_index(0).unwrap();
-    assert_eq!(content, crypto::encrypt_content(&content_dec, tik.dec_title_key(), 0, content_region.content_records[0].content_size));
-    println!("content re-encrypted OK");
-    
-    println!("wad header: {:?}", wad.header);
-    
-    let repacked = wad.to_bytes().unwrap();
-    assert_eq!(repacked, data);
-    println!("wad packed OK");
+    match &cli.command {
+        Some(Commands::Wad { command }) => {
+            match command {
+                Some(wad::Commands::Pack { input, output}) => {
+                    wad::pack_wad(input, output)
+                },
+                Some(wad::Commands::Unpack { input, output }) => {
+                    wad::unpack_wad(input, output)
+                },
+                &None => { /* This is handled by clap */}
+            }
+        }
+        None => {}
+    }
 }

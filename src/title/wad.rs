@@ -1,5 +1,5 @@
-// title/wad.rs from rustii-lib (c) 2025 NinjaCheetah & Contributors
-// https://github.com/NinjaCheetah/rustii-lib
+// title/wad.rs from rustii (c) 2025 NinjaCheetah & Contributors
+// https://github.com/NinjaCheetah/rustii
 //
 // Implements the structures and methods required for WAD parsing and editing.
 
@@ -141,7 +141,7 @@ impl WAD {
         };
         Ok(wad)
     }
-    
+
     pub fn to_bytes(&self) -> Result<Vec<u8>, WADError> {
         let mut buf = Vec::new();
         buf.write_u32::<BigEndian>(self.header.header_size).map_err(WADError::IOError)?;

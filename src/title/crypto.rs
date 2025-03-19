@@ -1,5 +1,5 @@
-// title/crypto.rs from rustii-lib (c) 2025 NinjaCheetah & Contributors
-// https://github.com/NinjaCheetah/rustii-lib
+// title/crypto.rs from rustii (c) 2025 NinjaCheetah & Contributors
+// https://github.com/NinjaCheetah/rustii
 //
 // Implements the common crypto functions required to handle Wii content encryption.
 

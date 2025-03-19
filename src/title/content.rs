@@ -1,5 +1,5 @@
-// title/content.rs from rustii-lib (c) 2025 NinjaCheetah & Contributors
-// https://github.com/NinjaCheetah/rustii-lib
+// title/content.rs from rustii (c) 2025 NinjaCheetah & Contributors
+// https://github.com/NinjaCheetah/rustii
 //
 // Implements content parsing and editing.
 
@@ -95,7 +95,8 @@ impl ContentRegion {
     pub fn get_content_by_index(&self, index: usize, title_key: [u8; 16]) -> Result<Vec<u8>, ContentError> {
         let content = self.get_enc_content_by_index(index)?;
         // Verify the hash of the decrypted content against its record.
-        let content_dec = decrypt_content(&content, title_key, self.content_records[index].index);
+        let mut content_dec = decrypt_content(&content, title_key, self.content_records[index].index);
+        content_dec.resize(self.content_records[index].content_size as usize, 0);
         let mut hasher = Sha1::new();
         hasher.update(content_dec.clone());
         let result = hasher.finalize();
