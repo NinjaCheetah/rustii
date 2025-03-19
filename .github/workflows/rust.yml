@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-linux-x86:
+  build-linux-x86_64:
 
     runs-on: ubuntu-latest
 
@@ -38,10 +38,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Install Required Toolchain
-      run: rustup toolchain install stable-aarch64-apple-darwin
+    - name: Update Toolchain
+      run: rustup update
+    - name: Add ARM64 Target
+      run: rustup toolchain install aarch64-apple-darwin
     - name: Build rustii
-      run: cargo +stable-aarch64-apple-darwin build --verbose --release
+      run: cargo build --verbose --release --target aarch64-apple-darwin
     - name: Package rustii for Upload
       run: |
         mv target/release/rustii ~/rustii
@@ -59,10 +61,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Install Required Toolchain
-      run: rustup toolchain install stable-x86_64-apple-darwin
+    - name: Update Toolchain
+      run: rustup update
+    - name: Add x86_64 Target
+      run: rustup target add x86_64-apple-darwin
     - name: Build rustii
-      run: cargo +stable-x86_64-apple-darwin build --verbose --release
+      run: cargo build --verbose --release --target x86_64-apple-darwin
     - name: Package rustii for Upload
       run: |
         mv target/release/rustii ~/rustii
@@ -74,7 +78,7 @@ jobs:
         path: ~/rustii.tar
         name: rustii-macOS-x86_64-bin
 
-  build-windows:
+  build-windows-x86_64:
     
     runs-on: windows-latest
 
