@@ -41,12 +41,12 @@ jobs:
     - name: Update Toolchain
       run: rustup update
     - name: Add ARM64 Target
-      run: rustup toolchain install aarch64-apple-darwin
+      run: rustup target add aarch64-apple-darwin
     - name: Build rustii
       run: cargo build --verbose --release --target aarch64-apple-darwin
     - name: Package rustii for Upload
       run: |
-        mv target/release/rustii ~/rustii
+        mv target/aarch64-apple-darwin/release/rustii ~/rustii
         cd ~
         tar cvf rustii.tar rustii
     - name: Upload rustii
@@ -69,7 +69,7 @@ jobs:
       run: cargo build --verbose --release --target x86_64-apple-darwin
     - name: Package rustii for Upload
       run: |
-        mv target/release/rustii ~/rustii
+        mv target/x86_64-apple-darwin/release/rustii ~/rustii
         cd ~
         tar cvf rustii.tar rustii
     - name: Upload rustii
