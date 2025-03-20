@@ -9,6 +9,7 @@ pub mod crypto;
 pub mod ticket;
 pub mod tmd;
 pub mod wad;
+mod cert;
 
 use std::error::Error;
 use std::fmt;
