@@ -9,10 +9,14 @@ use std::str;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use crate::title::{tmd, ticket, content};
+use crate::title::ticket::TicketError;
+use crate::title::tmd::TMDError;
 
 #[derive(Debug)]
 pub enum WADError {
     BadType,
+    TMDError(TMDError),
+    TicketError(TicketError),
     IOError(std::io::Error),
 }
 
@@ -20,6 +24,8 @@ impl fmt::Display for WADError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let description = match *self {
             WADError::BadType => "An invalid WAD type was specified.",
+            WADError::TMDError(_) => "An error occurred while loading TMD data.",
+            WADError::TicketError(_) => "An error occurred while loading Ticket data.",
             WADError::IOError(_) => "The provided WAD data was invalid.",
         };
         f.write_str(description)
@@ -68,7 +74,7 @@ impl WADHeader {
     pub fn from_body(body: &WADBody) -> Result<WADHeader, WADError> {
         // Generates a new WADHeader from a populated WADBody object.
         // Parse the TMD and use that to determine if this is a standard WAD or a boot2 WAD.
-        let tmd = tmd::TMD::from_bytes(&body.tmd).map_err(WADError::IOError)?;
+        let tmd = tmd::TMD::from_bytes(&body.tmd).map_err(WADError::TMDError)?;
         let wad_type = match hex::encode(tmd.title_id).as_str() {
             "0000000100000001" => WADType::ImportBoot,
             _ => WADType::Installable,

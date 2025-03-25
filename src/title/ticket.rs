@@ -7,11 +7,13 @@ use std::error::Error;
 use std::fmt;
 use std::io::{Cursor, Read, Write};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use sha1::{Sha1, Digest};
 use crate::title::crypto::decrypt_title_key;
 
 #[derive(Debug)]
 pub enum TicketError {
     UnsupportedVersion,
+    CannotFakesign,
     IOError(std::io::Error),
 }
 
@@ -19,6 +21,7 @@ impl fmt::Display for TicketError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let description = match *self {
             TicketError::UnsupportedVersion => "The provided Ticket is not a supported version (only v0 is supported).",
+            TicketError::CannotFakesign => "The Ticket data could not be fakesigned.",
             TicketError::IOError(_) => "The provided Ticket data was invalid.",
         };
         f.write_str(description)
@@ -183,5 +186,38 @@ impl Ticket {
         // Parse the signature issuer to determine if this is a dev Ticket or not.
         let issuer_str = String::from_utf8(Vec::from(&self.signature_issuer)).unwrap_or_default();
         issuer_str.contains("Root-CA00000002-XS00000004") || issuer_str.contains("Root-CA00000002-XS00000006")
+    }
+    
+    pub fn is_fakesigned(&self) -> bool {
+        // Can't be fakesigned without a null signature.
+        if self.signature != [0; 256] {
+            return false;
+        }
+        // Test the hash of the Ticket body to make sure it starts with 00.
+        let mut hasher = Sha1::new();
+        let ticket_body = self.to_bytes().unwrap();
+        hasher.update(&ticket_body[320..]);
+        let result = hasher.finalize();
+        if result[0] != 0 {
+            return false;
+        }
+        true
+    }
+    
+    pub fn fakesign(&mut self) -> Result<(), TicketError> {
+        // Erase the signature.
+        self.signature = [0; 256];
+        let mut current_int: u16 = 0;
+        let mut test_hash: [u8; 20] = [255; 20];
+        while test_hash[0] != 0 {
+            if current_int == 255 { return Err(TicketError::CannotFakesign); }
+            current_int += 1;
+            self.unknown2 = current_int.to_be_bytes();
+            let mut hasher = Sha1::new();
+            let ticket_body = self.to_bytes().unwrap();
+            hasher.update(&ticket_body[320..]);
+            test_hash = <[u8; 20]>::from(hasher.finalize());
+        }
+        Ok(())
     }
 }

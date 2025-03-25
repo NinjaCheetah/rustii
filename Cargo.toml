@@ -30,4 +30,5 @@ aes = "0"
 hex = "0"
 sha1 = "0"
 glob = "0"
+regex = "1"
 clap = { version = "4", features = ["derive"] }

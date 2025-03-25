@@ -3,8 +3,29 @@
 //
 // Implements the structures and methods required for TMD parsing and editing.
 
+use std::error::Error;
+use std::fmt;
 use std::io::{Cursor, Read, Write};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use sha1::{Sha1, Digest};
+
+#[derive(Debug)]
+pub enum TMDError {
+    CannotFakesign,
+    IOError(std::io::Error),
+}
+
+impl fmt::Display for TMDError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let description = match *self {
+            TMDError::CannotFakesign => "The TMD data could not be fakesigned.",
+            TMDError::IOError(_) => "The provided TMD data was invalid.",
+        };
+        f.write_str(description)
+    }
+}
+
+impl Error for TMDError {}
 
 #[derive(Debug)]
 #[derive(Clone)]
@@ -46,55 +67,55 @@ pub struct TMD {
 
 impl TMD {
     /// Creates a new TMD instance from the binary data of a TMD file.
-    pub fn from_bytes(data: &[u8]) -> Result<Self, std::io::Error> {
+    pub fn from_bytes(data: &[u8]) -> Result<Self, TMDError> {
         let mut buf = Cursor::new(data);
-        let signature_type = buf.read_u32::<BigEndian>()?;
+        let signature_type = buf.read_u32::<BigEndian>().map_err(TMDError::IOError)?;
         let mut signature = [0u8; 256];
-        buf.read_exact(&mut signature)?;
+        buf.read_exact(&mut signature).map_err(TMDError::IOError)?;
         // Maybe this can be read differently?
         let mut padding1 = [0u8; 60];
-        buf.read_exact(&mut padding1)?;
+        buf.read_exact(&mut padding1).map_err(TMDError::IOError)?;
         let mut signature_issuer = [0u8; 64];
-        buf.read_exact(&mut signature_issuer)?;
-        let tmd_version = buf.read_u8()?;
-        let ca_crl_version = buf.read_u8()?;
-        let signer_crl_version = buf.read_u8()?;
-        let is_vwii = buf.read_u8()?;
+        buf.read_exact(&mut signature_issuer).map_err(TMDError::IOError)?;
+        let tmd_version = buf.read_u8().map_err(TMDError::IOError)?;
+        let ca_crl_version = buf.read_u8().map_err(TMDError::IOError)?;
+        let signer_crl_version = buf.read_u8().map_err(TMDError::IOError)?;
+        let is_vwii = buf.read_u8().map_err(TMDError::IOError)?;
         let mut ios_tid = [0u8; 8];
-        buf.read_exact(&mut ios_tid)?;
+        buf.read_exact(&mut ios_tid).map_err(TMDError::IOError)?;
         let mut title_id = [0u8; 8];
-        buf.read_exact(&mut title_id)?;
+        buf.read_exact(&mut title_id).map_err(TMDError::IOError)?;
         let mut title_type = [0u8; 4];
-        buf.read_exact(&mut title_type)?;
-        let group_id = buf.read_u16::<BigEndian>()?;
+        buf.read_exact(&mut title_type).map_err(TMDError::IOError)?;
+        let group_id = buf.read_u16::<BigEndian>().map_err(TMDError::IOError)?;
         // Same here...
         let mut padding2 = [0u8; 2];
-        buf.read_exact(&mut padding2)?;
-        let region = buf.read_u16::<BigEndian>()?;
+        buf.read_exact(&mut padding2).map_err(TMDError::IOError)?;
+        let region = buf.read_u16::<BigEndian>().map_err(TMDError::IOError)?;
         let mut ratings = [0u8; 16];
-        buf.read_exact(&mut ratings)?;
+        buf.read_exact(&mut ratings).map_err(TMDError::IOError)?;
         // ...and here...
         let mut reserved1 = [0u8; 12];
-        buf.read_exact(&mut reserved1)?;
+        buf.read_exact(&mut reserved1).map_err(TMDError::IOError)?;
         let mut ipc_mask = [0u8; 12];
-        buf.read_exact(&mut ipc_mask)?;
+        buf.read_exact(&mut ipc_mask).map_err(TMDError::IOError)?;
         // ...and here.
         let mut reserved2 = [0u8; 18];
-        buf.read_exact(&mut reserved2)?;
-        let access_rights = buf.read_u32::<BigEndian>()?;
-        let title_version = buf.read_u16::<BigEndian>()?;
-        let num_contents = buf.read_u16::<BigEndian>()?;
-        let boot_index = buf.read_u16::<BigEndian>()?;
-        let minor_version = buf.read_u16::<BigEndian>()?;
+        buf.read_exact(&mut reserved2).map_err(TMDError::IOError)?;
+        let access_rights = buf.read_u32::<BigEndian>().map_err(TMDError::IOError)?;
+        let title_version = buf.read_u16::<BigEndian>().map_err(TMDError::IOError)?;
+        let num_contents = buf.read_u16::<BigEndian>().map_err(TMDError::IOError)?;
+        let boot_index = buf.read_u16::<BigEndian>().map_err(TMDError::IOError)?;
+        let minor_version = buf.read_u16::<BigEndian>().map_err(TMDError::IOError)?;
         // Build content records by iterating over the rest of the data num_contents times.
         let mut content_records = Vec::with_capacity(num_contents as usize);
         for _ in 0..num_contents {
-            let content_id = buf.read_u32::<BigEndian>()?;
-            let index = buf.read_u16::<BigEndian>()?;
-            let content_type = buf.read_u16::<BigEndian>()?;
-            let content_size = buf.read_u64::<BigEndian>()?;
+            let content_id = buf.read_u32::<BigEndian>().map_err(TMDError::IOError)?;
+            let index = buf.read_u16::<BigEndian>().map_err(TMDError::IOError)?;
+            let content_type = buf.read_u16::<BigEndian>().map_err(TMDError::IOError)?;
+            let content_size = buf.read_u64::<BigEndian>().map_err(TMDError::IOError)?;
             let mut content_hash = [0u8; 20];
-            buf.read_exact(&mut content_hash)?;
+            buf.read_exact(&mut content_hash).map_err(TMDError::IOError)?;
             content_records.push(ContentRecord {
                 content_id,
                 index,
@@ -166,5 +187,38 @@ impl TMD {
             buf.write_all(&content.content_hash)?;
         }
         Ok(buf)
+    }
+
+    pub fn is_fakesigned(&self) -> bool {
+        // Can't be fakesigned without a null signature.
+        if self.signature != [0; 256] {
+            return false;
+        }
+        // Test the hash of the TMD body to make sure it starts with 00.
+        let mut hasher = Sha1::new();
+        let tmd_body = self.to_bytes().unwrap();
+        hasher.update(&tmd_body[320..]);
+        let result = hasher.finalize();
+        if result[0] != 0 {
+            return false;
+        }
+        true
+    }
+
+    pub fn fakesign(&mut self) -> Result<(), TMDError> {
+        // Erase the signature.
+        self.signature = [0; 256];
+        let mut current_int: u16 = 0;
+        let mut test_hash: [u8; 20] = [255; 20];
+        while test_hash[0] != 0 {
+            if current_int == 255 { return Err(TMDError::CannotFakesign); }
+            current_int += 1;
+            self.minor_version = current_int;
+            let mut hasher = Sha1::new();
+            let ticket_body = self.to_bytes().unwrap();
+            hasher.update(&ticket_body[320..]);
+            test_hash = <[u8; 20]>::from(hasher.finalize());
+        }
+        Ok(())
     }
 }

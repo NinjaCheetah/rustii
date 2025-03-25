@@ -4,9 +4,10 @@
 // Base for the rustii CLI that handles argument parsing and directs execution to the proper module.
 
 mod title;
-use clap::{Subcommand, Parser};
-use title::wad;
+mod filetypes;
 
+use clap::{Subcommand, Parser};
+use title::{wad, fakesign};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -23,6 +24,13 @@ enum Commands {
         #[command(subcommand)]
         command: Option<wad::Commands>,
     },
+    /// Fakesign a TMD, Ticket, or WAD (trucha bug)
+    Fakesign {
+        /// Fakesign a TMD, Ticket, or WAD (trucha bug)
+        input: String,
+        #[arg(short, long)]
+        output: Option<String>,
+    }
 }
 
 fn main() {
@@ -39,6 +47,9 @@ fn main() {
                 },
                 &None => { /* This is handled by clap */}
             }
+        },
+        Some(Commands::Fakesign { input, output }) => {
+            fakesign::fakesign(input, output)
         }
         None => {}
     }

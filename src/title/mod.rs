@@ -20,6 +20,8 @@ pub enum TitleError {
     BadTMD,
     BadContent,
     InvalidWAD,
+    TMDError(tmd::TMDError),
+    TicketError(ticket::TicketError),
     WADError(wad::WADError),
     IOError(std::io::Error),
 }
@@ -31,6 +33,8 @@ impl fmt::Display for TitleError {
             TitleError::BadTMD => "The provided TMD data was invalid.",
             TitleError::BadContent => "The provided content data was invalid.",
             TitleError::InvalidWAD => "The provided WAD data was invalid.",
+            TitleError::TMDError(_) => "An error occurred while processing TMD data.",
+            TitleError::TicketError(_) => "An error occurred while processing ticket data.",
             TitleError::WADError(_) => "A WAD could not be built from the provided data.",
             TitleError::IOError(_) => "The provided Title data was invalid.",
         };
@@ -83,6 +87,17 @@ impl Title {
         let wad = wad::WAD::from_bytes(bytes).map_err(|_| TitleError::InvalidWAD)?;
         let title = Title::from_wad(&wad)?;
         Ok(title)
+    }
+    
+    pub fn is_fakesigned(&self) -> bool {
+        self.tmd.is_fakesigned() && self.ticket.is_fakesigned()
+    }
+    
+    pub fn fakesign(&mut self) -> Result<(), TitleError> {
+        // Run the fakesign methods on the TMD and Ticket.
+        self.tmd.fakesign().map_err(TitleError::TMDError)?;
+        self.ticket.fakesign().map_err(TitleError::TicketError)?;
+        Ok(())
     }
     
     pub fn get_content_by_index(&self, index: usize) -> Result<Vec<u8>, content::ContentError> {
