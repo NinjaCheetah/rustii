@@ -5,6 +5,7 @@
 
 mod title;
 mod filetypes;
+mod info;
 
 use clap::{Subcommand, Parser};
 use title::{wad, fakesign};
@@ -26,10 +27,16 @@ enum Commands {
     },
     /// Fakesign a TMD, Ticket, or WAD (trucha bug)
     Fakesign {
-        /// Fakesign a TMD, Ticket, or WAD (trucha bug)
+        /// The path to a TMD, Ticket, or WAD
         input: String,
+        /// An (optional) output name; defaults to overwriting input file if not provided
         #[arg(short, long)]
         output: Option<String>,
+    },
+    /// Get information about a TMD, Ticket, or WAD
+    Info {
+        /// The path to a TMD, Ticket, or WAD
+        input: String,
     }
 }
 
@@ -45,11 +52,14 @@ fn main() {
                 Some(wad::Commands::Unpack { input, output }) => {
                     wad::unpack_wad(input, output)
                 },
-                &None => { /* This is handled by clap */}
+                &None => { /* This is for me handled by clap */}
             }
         },
         Some(Commands::Fakesign { input, output }) => {
             fakesign::fakesign(input, output)
+        },
+        Some(Commands::Info { input }) => {
+            info::info(input)
         }
         None => {}
     }

@@ -210,7 +210,7 @@ impl Ticket {
         let mut current_int: u16 = 0;
         let mut test_hash: [u8; 20] = [255; 20];
         while test_hash[0] != 0 {
-            if current_int == 255 { return Err(TicketError::CannotFakesign); }
+            if current_int == 65535 { return Err(TicketError::CannotFakesign); }
             current_int += 1;
             self.unknown2 = current_int.to_be_bytes();
             let mut hasher = Sha1::new();

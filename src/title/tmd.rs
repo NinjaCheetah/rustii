@@ -211,7 +211,7 @@ impl TMD {
         let mut current_int: u16 = 0;
         let mut test_hash: [u8; 20] = [255; 20];
         while test_hash[0] != 0 {
-            if current_int == 255 { return Err(TMDError::CannotFakesign); }
+            if current_int == 65535 { return Err(TMDError::CannotFakesign); }
             current_int += 1;
             self.minor_version = current_int;
             let mut hasher = Sha1::new();

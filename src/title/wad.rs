@@ -238,6 +238,8 @@ impl WAD {
         buf.resize((buf.len() + 63) & !63, 0);
         Ok(buf)
     }
+    
+    pub fn cert_chain_size(&self) -> u32 { self.header.cert_chain_size }
 
     pub fn cert_chain(&self) -> Vec<u8> {
         self.body.cert_chain.clone()
@@ -247,6 +249,8 @@ impl WAD {
         self.body.cert_chain = cert_chain.to_vec();
         self.header.cert_chain_size = cert_chain.len() as u32;
     }
+    
+    pub fn crl_size(&self) -> u32 { self.header.crl_size }
 
     pub fn crl(&self) -> Vec<u8> {
         self.body.crl.clone()
@@ -256,6 +260,8 @@ impl WAD {
         self.body.crl = crl.to_vec();
         self.header.crl_size = crl.len() as u32;
     }
+    
+    pub fn ticket_size(&self) -> u32 { self.header.ticket_size }
 
     pub fn ticket(&self) -> Vec<u8> {
         self.body.ticket.clone()
@@ -265,6 +271,8 @@ impl WAD {
         self.body.ticket = ticket.to_vec();
         self.header.ticket_size = ticket.len() as u32;
     }
+    
+    pub fn tmd_size(&self) -> u32 { self.header.tmd_size }
 
     pub fn tmd(&self) -> Vec<u8> {
         self.body.tmd.clone()
@@ -274,6 +282,8 @@ impl WAD {
         self.body.tmd = tmd.to_vec();
         self.header.tmd_size = tmd.len() as u32;
     }
+    
+    pub fn content_size(&self) -> u32 { self.header.content_size }
 
     pub fn content(&self) -> Vec<u8> {
         self.body.content.clone()
@@ -283,6 +293,8 @@ impl WAD {
         self.body.content = content.to_vec();
         self.header.content_size = content.len() as u32;
     }
+    
+    pub fn meta_size(&self) -> u32 { self.header.meta_size }
 
     pub fn meta(&self) -> Vec<u8> {
         self.body.meta.clone()
