@@ -11,14 +11,14 @@ use crate::filetypes::{WiiFileType, identify_file_type};
 fn print_tmd_info(tmd: tmd::TMD) {
     // Print all important keys from the TMD.
     println!("Title Info");
-    println!("  Title ID: {}", hex::encode(tmd.title_id));
+    println!("  Title ID: {}", hex::encode(tmd.title_id).to_uppercase());
     println!("  Title Version: {}", tmd.title_version);
     println!("  TMD Version: {}", tmd.tmd_version);
     if hex::encode(tmd.ios_tid) == "0000000000000000" {
         println!("  Required IOS: N/A");
     }
     else if hex::encode(tmd.ios_tid) != "0000000100000001" {
-        println!("  Required IOS: IOS{} ({})", tmd.ios_tid.last().unwrap(), hex::encode(tmd.ios_tid));
+        println!("  Required IOS: IOS{} ({})", tmd.ios_tid.last().unwrap(), hex::encode(tmd.ios_tid).to_uppercase());
     }
     let signature_issuer = String::from_utf8(Vec::from(tmd.signature_issuer)).unwrap_or_default();
     if signature_issuer.contains("CP00000004") {
@@ -40,11 +40,11 @@ fn print_tmd_info(tmd: tmd::TMD) {
     else {
         println!("  Certificate Info: {} (Unknown)", signature_issuer);
     }
-    println!("  Region: WIP");
-    println!("  Title Type: WIP");
+    println!("  Region: {}", tmd.region());
+    println!("  Title Type: {}", tmd.title_type());
     println!("  vWii Title: {}", tmd.is_vwii != 0);
-    println!("  DVD Video Access: WIP");
-    println!("  AHB Access: WIP");
+    println!("  DVD Video Access: {}", tmd.check_access_right(tmd::AccessRight::DVDVideo));
+    println!("  AHB Access: {}", tmd.check_access_right(tmd::AccessRight::AHB));
     println!("  Fakesigned: {}", tmd.is_fakesigned());
     println!("\nContent Info");
     println!("  Total Contents: {}", tmd.num_contents);
@@ -53,7 +53,7 @@ fn print_tmd_info(tmd: tmd::TMD) {
     for content in tmd.content_records {
         println!("    Content Index: {}", content.index);
         println!("      Content ID: {:08X}", content.content_id);
-        println!("      Content Type: WIP");
+        println!("      Content Type: {}", content.content_type);
         println!("      Content Size: {} bytes", content.content_size);
         println!("      Content Hash: {}", hex::encode(content.content_hash));
     }
@@ -62,7 +62,7 @@ fn print_tmd_info(tmd: tmd::TMD) {
 fn print_ticket_info(ticket: ticket::Ticket) {
     // Print all important keys from the Ticket.
     println!("Ticket Info");
-    println!("  Title ID: {}", hex::encode(ticket.title_id));
+    println!("  Title ID: {}", hex::encode(ticket.title_id).to_uppercase());
     println!("  Title Version: {}", ticket.title_version);
     println!("  Ticket Version: {}", ticket.ticket_version);
     let signature_issuer = String::from_utf8(Vec::from(ticket.signature_issuer)).unwrap_or_default();

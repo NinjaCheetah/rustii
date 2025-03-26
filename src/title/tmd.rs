@@ -6,12 +6,14 @@
 use std::error::Error;
 use std::fmt;
 use std::io::{Cursor, Read, Write};
+use std::ops::Index;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use sha1::{Sha1, Digest};
 
 #[derive(Debug)]
 pub enum TMDError {
     CannotFakesign,
+    InvalidContentType(u16),
     IOError(std::io::Error),
 }
 
@@ -19,6 +21,7 @@ impl fmt::Display for TMDError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let description = match *self {
             TMDError::CannotFakesign => "The TMD data could not be fakesigned.",
+            TMDError::InvalidContentType(_) => "The TMD contains content with an invalid type.",
             TMDError::IOError(_) => "The provided TMD data was invalid.",
         };
         f.write_str(description)
@@ -27,12 +30,63 @@ impl fmt::Display for TMDError {
 
 impl Error for TMDError {}
 
-#[derive(Debug)]
-#[derive(Clone)]
+pub enum TitleType {
+    System,
+    Game,
+    Channel,
+    SystemChannel,
+    GameChannel,
+    DLC,
+    HiddenChannel,
+    Unknown,
+}
+
+impl fmt::Display for TitleType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TitleType::System => write!(f, "System"),
+            TitleType::Game => write!(f, "Game"),
+            TitleType::Channel => write!(f, "Channel"),
+            TitleType::SystemChannel => write!(f, "SystemChannel"),
+            TitleType::GameChannel => write!(f, "GameChannel"),
+            TitleType::DLC => write!(f, "DLC"),
+            TitleType::HiddenChannel => write!(f, "HiddenChannel"),
+            TitleType::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ContentType {
+    Normal,
+    Development,
+    HashTree,
+    DLC,
+    Shared,
+}
+
+impl fmt::Display for ContentType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ContentType::Normal => write!(f, "Normal"),
+            ContentType::Development => write!(f, "Development/Unknown"),
+            ContentType::HashTree => write!(f, "Hash Tree"),
+            ContentType::DLC => write!(f, "DLC"),
+            ContentType::Shared => write!(f, "Shared"),
+        }
+    }
+}
+
+pub enum AccessRight {
+    AHB,
+    DVDVideo,
+}
+
+#[derive(Debug, Clone)]
 pub struct ContentRecord {
     pub content_id: u32,
     pub index: u16,
-    pub content_type: u16,
+    pub content_type: ContentType,
     pub content_size: u64,
     pub content_hash: [u8; 20],
 }
@@ -52,7 +106,7 @@ pub struct TMD {
     pub title_type: [u8; 4],
     pub group_id: u16,
     padding2: [u8; 2],
-    pub region: u16,
+    region: u16,
     pub ratings: [u8; 16],
     reserved1: [u8; 12],
     pub ipc_mask: [u8; 12],
@@ -112,7 +166,15 @@ impl TMD {
         for _ in 0..num_contents {
             let content_id = buf.read_u32::<BigEndian>().map_err(TMDError::IOError)?;
             let index = buf.read_u16::<BigEndian>().map_err(TMDError::IOError)?;
-            let content_type = buf.read_u16::<BigEndian>().map_err(TMDError::IOError)?;
+            let type_int = buf.read_u16::<BigEndian>().map_err(TMDError::IOError)?;
+            let content_type = match type_int {
+                1 => ContentType::Normal,
+                2 => ContentType::Development,
+                3 => ContentType::HashTree,
+                16385 => ContentType::DLC,
+                32769 => ContentType::Shared,
+                _ => return Err(TMDError::InvalidContentType(type_int))
+            };
             let content_size = buf.read_u64::<BigEndian>().map_err(TMDError::IOError)?;
             let mut content_hash = [0u8; 20];
             buf.read_exact(&mut content_hash).map_err(TMDError::IOError)?;
@@ -182,7 +244,13 @@ impl TMD {
         for content in &self.content_records {
             buf.write_u32::<BigEndian>(content.content_id)?;
             buf.write_u16::<BigEndian>(content.index)?;
-            buf.write_u16::<BigEndian>(content.content_type)?;
+            match content.content_type {
+                ContentType::Normal => { buf.write_u16::<BigEndian>(1)?; },
+                ContentType::Development => { buf.write_u16::<BigEndian>(2)?; },
+                ContentType::HashTree => { buf.write_u16::<BigEndian>(3)?; },
+                ContentType::DLC => { buf.write_u16::<BigEndian>(16385)?; },
+                ContentType::Shared => { buf.write_u16::<BigEndian>(32769)?; }
+            }
             buf.write_u64::<BigEndian>(content.content_size)?;
             buf.write_all(&content.content_hash)?;
         }
@@ -220,5 +288,53 @@ impl TMD {
             test_hash = <[u8; 20]>::from(hasher.finalize());
         }
         Ok(())
+    }
+    
+    pub fn region(&self) -> &str {
+        match self.region {
+            0 => "JPN",
+            1 => "USA",
+            2 => "EUR",
+            3 => "None",
+            4 => "KOR",
+            _ => "Unknown",
+        }
+    }
+    
+    pub fn title_type(&self) -> TitleType {
+        match hex::encode(self.title_id)[..8].to_string().as_str() {
+            "00000001" => TitleType::System,
+            "00010000" => TitleType::Game,
+            "00010001" => TitleType::Channel,
+            "00010002" => TitleType::SystemChannel,
+            "00010004" => TitleType::GameChannel,
+            "00010005" => TitleType::DLC,
+            "00010008" => TitleType::HiddenChannel,
+            _ => TitleType::Unknown,
+        }
+    }
+    
+    pub fn content_type(&self, index: usize) -> ContentType {
+        // Find possible content indices, because the provided one could exist while the indices
+        // are out of order, which could cause problems finding the content.
+        let mut content_indices = Vec::new();
+        for record in &self.content_records {
+            content_indices.push(record.index);
+        }
+        let target_index = content_indices.index(index);
+        match self.content_records[*target_index as usize].content_type {
+            ContentType::Normal => ContentType::Normal,
+            ContentType::Development => ContentType::Development,
+            ContentType::HashTree => ContentType::HashTree,
+            ContentType::DLC => ContentType::DLC,
+            ContentType::Shared => ContentType::Shared,
+        }
+    } 
+    
+    pub fn check_access_right(&self, right: AccessRight) -> bool {
+        match right {
+            AccessRight::AHB => (self.access_rights & (1 << 0)) != 0,
+            AccessRight::DVDVideo => (self.access_rights & (1 << 1)) != 0,
+        }
     }
 }
