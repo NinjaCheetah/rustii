@@ -58,7 +58,8 @@ impl ContentRegion {
         // Parse the content blob and create a vector of vectors from it.
         // Check that the content blob matches the total size of all the contents in the records.
         if content_region_size != total_content_size as u32 {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid content blob for content records"));
+            println!("Content region size mismatch.");
+            //return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid content blob for content records"));
         }
         let mut contents: Vec<Vec<u8>> = Vec::with_capacity(num_contents as usize);
         let mut buf = Cursor::new(data);

@@ -5,19 +5,27 @@
 
 use std::{str, fs};
 use std::path::Path;
-use rustii::{title, title::tmd, title::ticket, title::wad};
+use rustii::{title, title::tmd, title::ticket, title::wad, title::versions};
 use crate::filetypes::{WiiFileType, identify_file_type};
 
 fn print_tmd_info(tmd: tmd::TMD) {
     // Print all important keys from the TMD.
     println!("Title Info");
     println!("  Title ID: {}", hex::encode(tmd.title_id).to_uppercase());
-    println!("  Title Version: {}", tmd.title_version);
+    if hex::encode(tmd.title_id)[..8].eq("00000001") {
+        if hex::encode(tmd.title_id).eq("0000000100000001") {
+            println!("  Title Version: {} (boot2v{})", tmd.title_version, tmd.title_version);
+        } else {
+            println!("  Title Version: {} ({})", tmd.title_version, versions::dec_to_standard(tmd.title_version, &hex::encode(tmd.title_id), Some(tmd.is_vwii != 0)).unwrap());
+        }
+    } else {
+        println!("  Title Version: {}", tmd.title_version);
+    }
     println!("  TMD Version: {}", tmd.tmd_version);
-    if hex::encode(tmd.ios_tid) == "0000000000000000" {
+    if hex::encode(tmd.ios_tid).eq("0000000000000000") {
         println!("  Required IOS: N/A");
     }
-    else if hex::encode(tmd.ios_tid) != "0000000100000001" {
+    else if hex::encode(tmd.ios_tid).ne(&format!("{:016X}", tmd.title_version)) {
         println!("  Required IOS: IOS{} ({})", tmd.ios_tid.last().unwrap(), hex::encode(tmd.ios_tid).to_uppercase());
     }
     let signature_issuer = String::from_utf8(Vec::from(tmd.signature_issuer)).unwrap_or_default();
@@ -40,7 +48,21 @@ fn print_tmd_info(tmd: tmd::TMD) {
     else {
         println!("  Certificate Info: {} (Unknown)", signature_issuer);
     }
-    println!("  Region: {}", tmd.region());
+    let region = if hex::encode(tmd.title_id).eq("0000000100000002") {
+        match versions::dec_to_standard(tmd.title_version, &hex::encode(tmd.title_id), Some(tmd.is_vwii != 0))
+            .unwrap_or_default().chars().last() {
+            Some('U') => "USA",
+            Some('E') => "EUR",
+            Some('J') => "JPN",
+            Some('K') => "KOR",
+            _ => "None"
+        }
+    } else if matches!(tmd.title_type(), tmd::TitleType::System) {
+        "None"
+    } else {
+        tmd.region()
+    };
+    println!("  Region: {}", region);
     println!("  Title Type: {}", tmd.title_type());
     println!("  vWii Title: {}", tmd.is_vwii != 0);
     println!("  DVD Video Access: {}", tmd.check_access_right(tmd::AccessRight::DVDVideo));
@@ -63,22 +85,27 @@ fn print_ticket_info(ticket: ticket::Ticket) {
     // Print all important keys from the Ticket.
     println!("Ticket Info");
     println!("  Title ID: {}", hex::encode(ticket.title_id).to_uppercase());
-    println!("  Title Version: {}", ticket.title_version);
+    if hex::encode(ticket.title_id)[..8].eq("00000001") {
+        if hex::encode(ticket.title_id).eq("0000000100000001") {
+            println!("  Title Version: {} (boot2v{})", ticket.title_version, ticket.title_version);
+        } else {
+            println!("  Title Version: {} ({})", ticket.title_version, versions::dec_to_standard(ticket.title_version, &hex::encode(ticket.title_id), Some(ticket.common_key_index == 2)).unwrap());
+        }
+    } else {
+        println!("  Title Version: {}", ticket.title_version);
+    }
     println!("  Ticket Version: {}", ticket.ticket_version);
     let signature_issuer = String::from_utf8(Vec::from(ticket.signature_issuer)).unwrap_or_default();
     if signature_issuer.contains("XS00000003") {
         println!("  Certificate: XS00000003 (Retail)");
         println!("  Certificate Issuer: Root-CA00000001 (Retail)");
-    }
-    else if signature_issuer.contains("XS00000006") {
+    } else if signature_issuer.contains("XS00000006") {
         println!("  Certificate: XS00000006 (Development)");
         println!("  Certificate Issuer: Root-CA00000002 (Development)");
-    }
-    else if signature_issuer.contains("XS00000004") {
+    } else if signature_issuer.contains("XS00000004") {
         println!("  Certificate: XS00000004 (Development/Unknown)");
         println!("  Certificate Issuer: Root-CA00000002 (Development)");
-    }
-    else {
+    } else {
         println!("  Certificate Info: {} (Unknown)", signature_issuer);
     }
     let key = match ticket.common_key_index {
@@ -106,10 +133,18 @@ fn print_wad_info(wad: wad::WAD) {
     let title = title::Title::from_wad(&wad).unwrap();
     let min_size_blocks = title.title_size_blocks(None).unwrap();
     let max_size_blocks = title.title_size_blocks(Some(true)).unwrap();
-    println!("  Installed Size: {}-{} blocks", min_size_blocks, max_size_blocks);
+    if min_size_blocks == max_size_blocks {
+        println!("  Installed Size: {} blocks", min_size_blocks);
+    } else {
+        println!("  Installed Size: {}-{} blocks", min_size_blocks, max_size_blocks);
+    }
     let min_size = title.title_size(None).unwrap() as f64 / 1048576.0;
     let max_size = title.title_size(Some(true)).unwrap() as f64 / 1048576.0;
-    println!("  Installed Size (MB): {:.2}-{:.2} MB", min_size, max_size);
+    if min_size == max_size {
+        println!("  Installed Size (MB): {:.2} MB", min_size);
+    } else {
+        println!("  Installed Size (MB): {:.2}-{:.2} MB", min_size, max_size);
+    }
     println!("  Has Meta/Footer: {}", wad.meta_size() != 0);
     println!("  Has CRL: {}", wad.crl_size() != 0);
     println!("  Fakesigned: {}", title.is_fakesigned());

@@ -3,13 +3,14 @@
 //
 // Root for all title-related modules and implementation of the high-level Title object.
 
+pub mod cert;
 pub mod commonkeys;
 pub mod content;
 pub mod crypto;
 pub mod ticket;
 pub mod tmd;
+pub mod versions;
 pub mod wad;
-mod cert;
 
 use std::error::Error;
 use std::fmt;

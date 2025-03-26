@@ -5,7 +5,7 @@ use rustii::title::{content, crypto, wad};
 use rustii::title;
 
 fn main() {
-    let data = fs::read("sm.wad").unwrap();
+    let data = fs::read("boot2.wad").unwrap();
     let mut title = title::Title::from_bytes(&data).unwrap();
     println!("Title ID from WAD via Title object: {}", hex::encode(title.tmd.title_id));
     
