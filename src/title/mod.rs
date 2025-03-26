@@ -110,6 +110,34 @@ impl Title {
         Ok(content)
     }
     
+    /// Gets the installed size of the title, in bytes. Use the optional parameter "absolute" to set
+    /// whether shared content should be included in this total or not.
+    pub fn title_size(&self, absolute: Option<bool>) -> Result<usize, TitleError> {
+        let mut title_size: usize = 0;
+        // Get the TMD and Ticket size by dumping them and measuring their length for the most
+        // accurate results.
+        title_size += self.tmd.to_bytes().map_err(|x| TitleError::TMDError(tmd::TMDError::IOError(x)))?.len();
+        title_size += self.ticket.to_bytes().map_err(|x| TitleError::TicketError(ticket::TicketError::IOError(x)))?.len();
+        for record in &self.tmd.content_records {
+            if matches!(record.content_type, tmd::ContentType::Shared) {
+                if absolute == Some(true) {
+                    title_size += record.content_size as usize;
+                }
+            }
+            else {
+                title_size += record.content_size as usize;
+            }
+        }
+        Ok(title_size)
+    }
+    
+    /// Gets the installed size of the title, in blocks. Use the optional parameter "absolute" to
+    /// set whether shared content should be included in this total or not.
+    pub fn title_size_blocks(&self, absolute: Option<bool>) -> Result<usize, TitleError> {
+        let title_size_bytes = self.title_size(absolute)?;
+        Ok((title_size_bytes as f64 / 131072.0).ceil() as usize)
+    }
+    
     pub fn cert_chain(&self) -> Vec<u8> {
         self.cert_chain.clone()
     }

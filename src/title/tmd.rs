@@ -289,7 +289,7 @@ impl TMD {
         }
         Ok(())
     }
-    
+
     pub fn region(&self) -> &str {
         match self.region {
             0 => "JPN",
@@ -300,7 +300,7 @@ impl TMD {
             _ => "Unknown",
         }
     }
-    
+
     pub fn title_type(&self) -> TitleType {
         match hex::encode(self.title_id)[..8].to_string().as_str() {
             "00000001" => TitleType::System,
@@ -313,7 +313,7 @@ impl TMD {
             _ => TitleType::Unknown,
         }
     }
-    
+
     pub fn content_type(&self, index: usize) -> ContentType {
         // Find possible content indices, because the provided one could exist while the indices
         // are out of order, which could cause problems finding the content.
@@ -329,8 +329,8 @@ impl TMD {
             ContentType::DLC => ContentType::DLC,
             ContentType::Shared => ContentType::Shared,
         }
-    } 
-    
+    }
+
     pub fn check_access_right(&self, right: AccessRight) -> bool {
         match right {
             AccessRight::AHB => (self.access_rights & (1 << 0)) != 0,

@@ -102,12 +102,16 @@ fn print_wad_info(wad: wad::WAD) {
         wad::WADType::ImportBoot => { println!("  WAD Type: boot2") },
         wad::WADType::Installable => { println!("  WAD Type: Standard Installable") },
     }
-    println!("  Installed Size: WIP blocks");
-    println!("  Installed Size (MB): WIP MB");
+    // Create a Title for size info, signing info and TMD/Ticket info.
+    let title = title::Title::from_wad(&wad).unwrap();
+    let min_size_blocks = title.title_size_blocks(None).unwrap();
+    let max_size_blocks = title.title_size_blocks(Some(true)).unwrap();
+    println!("  Installed Size: {}-{} blocks", min_size_blocks, max_size_blocks);
+    let min_size = title.title_size(None).unwrap() as f64 / 1048576.0;
+    let max_size = title.title_size(Some(true)).unwrap() as f64 / 1048576.0;
+    println!("  Installed Size (MB): {:.2}-{:.2} MB", min_size, max_size);
     println!("  Has Meta/Footer: {}", wad.meta_size() != 0);
     println!("  Has CRL: {}", wad.crl_size() != 0);
-    // Create a Title for signing info and TMD/Ticket info.
-    let title = title::Title::from_wad(&wad).unwrap();
     println!("  Fakesigned: {}", title.is_fakesigned());
     println!();
     print_ticket_info(title.ticket);
