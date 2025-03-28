@@ -337,4 +337,8 @@ impl TMD {
             AccessRight::DVDVideo => (self.access_rights & (1 << 1)) != 0,
         }
     }
+    
+    pub fn signature_issuer(&self) -> String {
+        String::from_utf8_lossy(&self.signature_issuer).trim_end_matches('\0').to_owned()
+    }
 }

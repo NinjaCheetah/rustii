@@ -17,10 +17,12 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum TitleError {
+    BadCertChain,
     BadTicket,
     BadTMD,
     BadContent,
     InvalidWAD,
+    CertificateError(cert::CertificateError),
     TMDError(tmd::TMDError),
     TicketError(ticket::TicketError),
     WADError(wad::WADError),
@@ -30,10 +32,12 @@ pub enum TitleError {
 impl fmt::Display for TitleError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let description = match *self {
+            TitleError::BadCertChain => "The provided certificate chain data was invalid.",
             TitleError::BadTicket => "The provided Ticket data was invalid.",
             TitleError::BadTMD => "The provided TMD data was invalid.",
             TitleError::BadContent => "The provided content data was invalid.",
             TitleError::InvalidWAD => "The provided WAD data was invalid.",
+            TitleError::CertificateError(_) => "An error occurred while processing certificate data.",
             TitleError::TMDError(_) => "An error occurred while processing TMD data.",
             TitleError::TicketError(_) => "An error occurred while processing ticket data.",
             TitleError::WADError(_) => "A WAD could not be built from the provided data.",
@@ -47,7 +51,7 @@ impl Error for TitleError {}
 
 #[derive(Debug)]
 pub struct Title {
-    cert_chain: Vec<u8>,
+    pub cert_chain: cert::CertificateChain,
     crl: Vec<u8>,
     pub ticket: ticket::Ticket,
     pub tmd: tmd::TMD,
@@ -57,11 +61,12 @@ pub struct Title {
 
 impl Title {
     pub fn from_wad(wad: &wad::WAD) -> Result<Title, TitleError> {
+        let cert_chain = cert::CertificateChain::from_bytes(&wad.cert_chain()).map_err(|_| TitleError::BadCertChain)?;
         let ticket = ticket::Ticket::from_bytes(&wad.ticket()).map_err(|_| TitleError::BadTicket)?;
         let tmd = tmd::TMD::from_bytes(&wad.tmd()).map_err(|_| TitleError::BadTMD)?;
         let content = content::ContentRegion::from_bytes(&wad.content(), tmd.content_records.clone()).map_err(|_| TitleError::BadContent)?;
         let title = Title {
-            cert_chain: wad.cert_chain(),
+            cert_chain,
             crl: wad.crl(),
             ticket,
             tmd,
@@ -138,13 +143,26 @@ impl Title {
         let title_size_bytes = self.title_size(absolute)?;
         Ok((title_size_bytes as f64 / 131072.0).ceil() as usize)
     }
-    
-    pub fn cert_chain(&self) -> Vec<u8> {
-        self.cert_chain.clone()
+
+    /// Verifies entire certificate chain, and then the TMD and Ticket. Returns true if the title
+    /// is entirely valid, or false if any component of the verification fails.
+    pub fn verify(&self) -> Result<bool, TitleError> {
+        if !cert::verify_ca_cert(&self.cert_chain.ca_cert()).map_err(TitleError::CertificateError)? {
+            return Ok(false)
+        }
+        if !cert::verify_child_cert(&self.cert_chain.ca_cert(), &self.cert_chain.tmd_cert()).map_err(TitleError::CertificateError)? ||
+            !cert::verify_child_cert(&self.cert_chain.ca_cert(), &self.cert_chain.ticket_cert()).map_err(TitleError::CertificateError)? {
+            return Ok(false)
+        }
+        if !cert::verify_tmd(&self.cert_chain.tmd_cert(), &self.tmd).map_err(TitleError::CertificateError)? ||
+            !cert::verify_ticket(&self.cert_chain.ticket_cert(), &self.ticket).map_err(TitleError::CertificateError)? {
+            return Ok(false)
+        }
+        Ok(true)
     }
 
-    pub fn set_cert_chain(&mut self, cert_chain: &[u8]) {
-        self.cert_chain = cert_chain.to_vec();
+    pub fn set_cert_chain(&mut self, cert_chain: cert::CertificateChain) {
+        self.cert_chain = cert_chain;
     }
     
     pub fn crl(&self) -> Vec<u8> {

@@ -7,7 +7,7 @@ use std::{str, fs};
 use std::path::{Path, PathBuf};
 use clap::Subcommand;
 use glob::glob;
-use rustii::title::{tmd, ticket, content, wad};
+use rustii::title::{cert, tmd, ticket, content, wad};
 use rustii::title;
 
 #[derive(Subcommand)]
@@ -59,7 +59,7 @@ pub fn pack_wad(input: &str, output: &str) {
     } else if cert_files.len() > 1 {
         panic!("Error: More than one Cert file found in the source directory.")
     }
-    let cert_chain = fs::read(&cert_files[0]).expect("could not read cert chain file");
+    let cert_chain = cert::CertificateChain::from_bytes(&fs::read(&cert_files[0]).expect("could not read cert chain file")).unwrap();
     // Read footer, if one exists (only accept one file).
     let footer_files: Vec<PathBuf> = glob(&format!("{}/*.footer", in_path.display()))
         .expect("failed to read glob pattern")
@@ -106,7 +106,7 @@ pub fn unpack_wad(input: &str, output: &str) {
     let ticket_file_name = format!("{}.tik", tid);
     fs::write(Path::join(out_path, ticket_file_name), title.ticket.to_bytes().unwrap()).expect("could not write Ticket file");
     let cert_file_name = format!("{}.cert", tid);
-    fs::write(Path::join(out_path, cert_file_name), title.cert_chain()).expect("could not write Cert file");
+    fs::write(Path::join(out_path, cert_file_name), title.cert_chain.to_bytes().unwrap()).expect("could not write Cert file");
     let meta_file_name = format!("{}.footer", tid);
     fs::write(Path::join(out_path, meta_file_name), title.meta()).expect("could not write footer file");
     // Iterate over contents, decrypt them, and write them out.

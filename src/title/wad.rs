@@ -8,7 +8,7 @@ use std::fmt;
 use std::str;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use crate::title::{tmd, ticket, content};
+use crate::title::{cert, tmd, ticket, content};
 use crate::title::ticket::TicketError;
 use crate::title::tmd::TMDError;
 
@@ -103,10 +103,10 @@ impl WADHeader {
 }
 
 impl WADBody {
-    pub fn from_parts(cert_chain: &[u8], crl: &[u8], ticket: &ticket::Ticket, tmd: &tmd::TMD, 
+    pub fn from_parts(cert_chain: &cert::CertificateChain, crl: &[u8], ticket: &ticket::Ticket, tmd: &tmd::TMD, 
                       content: &content::ContentRegion, meta: &[u8]) -> Result<WADBody, WADError> {
         let body = WADBody {
-            cert_chain: cert_chain.to_vec(),
+            cert_chain: cert_chain.to_bytes().map_err(WADError::IOError)?,
             crl: crl.to_vec(),
             ticket: ticket.to_bytes().map_err(WADError::IOError)?,
             tmd: tmd.to_bytes().map_err(WADError::IOError)?,
@@ -196,7 +196,7 @@ impl WAD {
         Ok(wad)
     }
     
-    pub fn from_parts(cert_chain: &[u8], crl: &[u8], ticket: &ticket::Ticket, tmd: &tmd::TMD,
+    pub fn from_parts(cert_chain: &cert::CertificateChain, crl: &[u8], ticket: &ticket::Ticket, tmd: &tmd::TMD,
                       content: &content::ContentRegion, meta: &[u8]) -> Result<WAD, WADError> {
         let body = WADBody::from_parts(cert_chain, crl, ticket, tmd, content, meta)?;
         let header = WADHeader::from_body(&body)?;
