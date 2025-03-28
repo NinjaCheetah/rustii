@@ -6,6 +6,8 @@ const KOREAN_KEY: &str = "63b82bb4f4614e2e13f2fefbba4c9b7e";
 const VWII_KEY: &str = "30bfc76e7c19afbb23163330ced7c28d";
 const DEV_COMMON_KEY: &str = "a1604a6a7123b529ae8bec32c816fcaa";
 
+/// Returns the common key for the specified index. Providing Some(true) for the optional argument
+/// is_dev will make index 0 return the development common key instead of the retail common key.
 pub fn get_common_key(index: u8, is_dev: Option<bool>) -> [u8; 16] {
     // Match the Korean and vWii keys, and if they don't match then fall back on the common key.
     // The is_dev argument is an option, and if it's set to false or None, then the regular

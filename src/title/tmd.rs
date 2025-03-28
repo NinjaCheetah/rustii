@@ -83,6 +83,7 @@ pub enum AccessRight {
 }
 
 #[derive(Debug, Clone)]
+/// A structure that represents the metadata of a content file in a digital Wii title.
 pub struct ContentRecord {
     pub content_id: u32,
     pub index: u16,
@@ -92,6 +93,7 @@ pub struct ContentRecord {
 }
 
 #[derive(Debug)]
+/// A structure that represents a Wii TMD (Title Metadata) file.
 pub struct TMD {
     pub signature_type: u32,
     pub signature: [u8; 256],
@@ -257,6 +259,7 @@ impl TMD {
         Ok(buf)
     }
 
+    /// Gets whether a TMD is fakesigned using the strncmp (trucha) bug or not.
     pub fn is_fakesigned(&self) -> bool {
         // Can't be fakesigned without a null signature.
         if self.signature != [0; 256] {
@@ -273,6 +276,7 @@ impl TMD {
         true
     }
 
+    /// Fakesigns a TMD for use with the strncmp (trucha) bug.
     pub fn fakesign(&mut self) -> Result<(), TMDError> {
         // Erase the signature.
         self.signature = [0; 256];
@@ -290,6 +294,7 @@ impl TMD {
         Ok(())
     }
 
+    /// Gets the 3-letter code of the region a TMD was created for.
     pub fn region(&self) -> &str {
         match self.region {
             0 => "JPN",
@@ -301,6 +306,7 @@ impl TMD {
         }
     }
 
+    /// Gets the type of title described by a TMD.
     pub fn title_type(&self) -> TitleType {
         match hex::encode(self.title_id)[..8].to_string().as_str() {
             "00000001" => TitleType::System,
@@ -314,6 +320,7 @@ impl TMD {
         }
     }
 
+    /// Gets the type of content described by a content record in a TMD.
     pub fn content_type(&self, index: usize) -> ContentType {
         // Find possible content indices, because the provided one could exist while the indices
         // are out of order, which could cause problems finding the content.
@@ -331,13 +338,15 @@ impl TMD {
         }
     }
 
+    /// Gets whether a specified access right is enabled in a TMD.
     pub fn check_access_right(&self, right: AccessRight) -> bool {
         match right {
             AccessRight::AHB => (self.access_rights & (1 << 0)) != 0,
             AccessRight::DVDVideo => (self.access_rights & (1 << 1)) != 0,
         }
     }
-    
+
+    /// Gets the name of the certificate used to sign a TMD as a string.
     pub fn signature_issuer(&self) -> String {
         String::from_utf8_lossy(&self.signature_issuer).trim_end_matches('\0').to_owned()
     }

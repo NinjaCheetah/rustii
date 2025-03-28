@@ -50,6 +50,7 @@ impl fmt::Display for TitleError {
 impl Error for TitleError {}
 
 #[derive(Debug)]
+/// A structure that represents the components of a digital Wii title.
 pub struct Title {
     pub cert_chain: cert::CertificateChain,
     crl: Vec<u8>,
@@ -60,6 +61,7 @@ pub struct Title {
 }
 
 impl Title {
+    /// Creates a new Title instance from an existing WAD instance.
     pub fn from_wad(wad: &wad::WAD) -> Result<Title, TitleError> {
         let cert_chain = cert::CertificateChain::from_bytes(&wad.cert_chain()).map_err(|_| TitleError::BadCertChain)?;
         let ticket = ticket::Ticket::from_bytes(&wad.ticket()).map_err(|_| TitleError::BadTicket)?;
@@ -76,6 +78,7 @@ impl Title {
         Ok(title)
     }
     
+    /// Converts a Title instance into a WAD, which can be used to export the Title back to a file.
     pub fn to_wad(&self) -> Result<wad::WAD, TitleError> {
         // Create a new WAD from the data in the Title.
         let wad = wad::WAD::from_parts(
@@ -89,16 +92,19 @@ impl Title {
         Ok(wad)
     }
     
+    /// Creates a new Title instance from the binary data of a WAD file.
     pub fn from_bytes(bytes: &[u8]) -> Result<Title, TitleError> {
         let wad = wad::WAD::from_bytes(bytes).map_err(|_| TitleError::InvalidWAD)?;
         let title = Title::from_wad(&wad)?;
         Ok(title)
     }
     
+    /// Gets whether the TMD and Ticket of a Title are both fakesigned.
     pub fn is_fakesigned(&self) -> bool {
         self.tmd.is_fakesigned() && self.ticket.is_fakesigned()
     }
     
+    /// Fakesigns the TMD and Ticket of a Title.
     pub fn fakesign(&mut self) -> Result<(), TitleError> {
         // Run the fakesign methods on the TMD and Ticket.
         self.tmd.fakesign().map_err(TitleError::TMDError)?;
@@ -106,11 +112,13 @@ impl Title {
         Ok(())
     }
     
+    /// Gets the decrypted content file from the Title at the specified index.
     pub fn get_content_by_index(&self, index: usize) -> Result<Vec<u8>, content::ContentError> {
         let content = self.content.get_content_by_index(index, self.ticket.dec_title_key())?;
         Ok(content)
     }
     
+    /// Gets the decrypted content file from the Title with the specified Content ID.
     pub fn get_content_by_cid(&self, cid: u32) -> Result<Vec<u8>, content::ContentError> {
         let content = self.content.get_content_by_cid(cid, self.ticket.dec_title_key())?;
         Ok(content)

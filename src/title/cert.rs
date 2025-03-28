@@ -49,6 +49,7 @@ pub enum CertificateKeyType {
 }
 
 #[derive(Debug, Clone)]
+/// A structure that represents the components of a Wii signing certificate.
 pub struct Certificate {
     signer_key_type: CertificateKeyType,
     signature: Vec<u8>,
@@ -123,7 +124,7 @@ impl Certificate {
         })
     }
 
-    /// Dumps the data in a Certificate back into binary data that can be written to a file.
+    /// Dumps the data in a Certificate instance back into binary data that can be written to a file.
     pub fn to_bytes(&self) -> Result<Vec<u8>, std::io::Error> {
         let mut buf: Vec<u8> = Vec::new();
         match self.signer_key_type {
@@ -154,24 +155,29 @@ impl Certificate {
         Ok(buf)
     }
     
+    /// Gets the name of the certificate used to sign a certificate as a string.
     pub fn signature_issuer(&self) -> String {
         String::from_utf8_lossy(&self.signature_issuer).trim_end_matches('\0').to_owned()
     }
     
+    /// Gets the name of a certificate's child certificate as a string.
     pub fn child_cert_identity(&self) -> String {
         String::from_utf8_lossy(&self.child_cert_identity).trim_end_matches('\0').to_owned()
     }
     
+    /// Gets the modulus of the public key contained in a certificate.
     pub fn pub_key_modulus(&self) -> Vec<u8> {
         self.pub_key_modulus.clone()
     }
     
+    /// Gets the exponent of the public key contained in a certificate.
     pub fn pub_key_exponent(&self) -> u32 {
         self.pub_key_exponent
     }
 }
 
 #[derive(Debug)]
+/// A structure that represents the components of the Wii's signing certificate chain.
 pub struct CertificateChain {
     ca_cert: Certificate,
     tmd_cert: Certificate,
@@ -179,6 +185,9 @@ pub struct CertificateChain {
 }
 
 impl CertificateChain {
+    /// Creates a new CertificateChain instance from the binary data of an entire certificate chain.
+    /// This chain must contain a CA certificate, a TMD certificate, and a Ticket certificate or
+    /// else this method will return an error.
     pub fn from_bytes(data: &[u8]) -> Result<CertificateChain, CertificateError> {
         let mut buf = Cursor::new(data);
         let mut offset: u64 = 0;
@@ -238,6 +247,10 @@ impl CertificateChain {
         })
     }
 
+    /// Creates a new CertificateChain instance from three separate Certificate instances each
+    /// containing one of the three certificates stored in the chain. You must provide a CA
+    /// certificate, a TMD certificate, and a Ticket certificate, or this method will return an
+    /// error.
     pub fn from_certs(ca_cert: Certificate, tmd_cert: Certificate, ticket_cert: Certificate) -> Result<Self, CertificateError> {
         if String::from_utf8_lossy(&ca_cert.signature_issuer).trim_end_matches('\0').ne("Root") {
             return Err(CertificateError::IncorrectCertificate("CA".to_owned()));
@@ -255,6 +268,7 @@ impl CertificateChain {
         })
     }
     
+    /// Dumps the entire CertificateChain back into binary data that can be written to a file.
     pub fn to_bytes(&self) -> Result<Vec<u8>, std::io::Error> {
         let mut buf: Vec<u8> = Vec::new();
         buf.write_all(&self.ca_cert().to_bytes()?)?;
@@ -316,8 +330,7 @@ pub fn verify_child_cert(ca_cert: &Certificate, child_cert: &Certificate) -> Res
         return Err(CertificateError::NonMatchingCertificates)
     }
     let mut hasher = Sha1::new();
-    let cert_body = child_cert.to_bytes().unwrap();
-    hasher.update(&cert_body[320..]);
+    hasher.update(&child_cert.to_bytes().map_err(CertificateError::IOError)?[320..]);
     let cert_hash = hasher.finalize().as_slice().to_owned();
     let public_key_modulus = BigUint::from_bytes_be(&ca_cert.pub_key_modulus());
     let public_key_exponent = BigUint::from(ca_cert.pub_key_exponent());
@@ -339,8 +352,7 @@ pub fn verify_tmd(tmd_cert: &Certificate, tmd: &tmd::TMD) -> Result<bool, Certif
         return Err(CertificateError::NonMatchingCertificates)
     }
     let mut hasher = Sha1::new();
-    let tmd_body = tmd.to_bytes().unwrap();
-    hasher.update(&tmd_body[320..]);
+    hasher.update(&tmd.to_bytes().map_err(CertificateError::IOError)?[320..]);
     let tmd_hash = hasher.finalize().as_slice().to_owned();
     let public_key_modulus = BigUint::from_bytes_be(&tmd_cert.pub_key_modulus());
     let public_key_exponent = BigUint::from(tmd_cert.pub_key_exponent());
@@ -362,15 +374,13 @@ pub fn verify_ticket(ticket_cert: &Certificate, ticket: &ticket::Ticket) -> Resu
         return Err(CertificateError::NonMatchingCertificates)
     }
     let mut hasher = Sha1::new();
-    let tmd_body = ticket.to_bytes().unwrap();
-    hasher.update(&tmd_body[320..]);
-    let tmd_hash = hasher.finalize().as_slice().to_owned();
+    hasher.update(&ticket.to_bytes().map_err(CertificateError::IOError)?[320..]);
+    let ticket_hash = hasher.finalize().as_slice().to_owned();
     let public_key_modulus = BigUint::from_bytes_be(&ticket_cert.pub_key_modulus());
     let public_key_exponent = BigUint::from(ticket_cert.pub_key_exponent());
     let root_key = RsaPublicKey::new(public_key_modulus, public_key_exponent).unwrap();
-    match root_key.verify(Pkcs1v15Sign::new::<Sha1>(), &tmd_hash, ticket.signature.as_slice()) {
+    match root_key.verify(Pkcs1v15Sign::new::<Sha1>(), &ticket_hash, ticket.signature.as_slice()) {
         Ok(_) => Ok(true),
         Err(_) => Ok(false),
     }
 }
-

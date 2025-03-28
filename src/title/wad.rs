@@ -41,12 +41,14 @@ pub enum WADType {
 }
 
 #[derive(Debug)]
+/// A structure that represents an entire WAD file as a separate header and body.
 pub struct WAD {
     pub header: WADHeader,
     pub body: WADBody,
 }
 
 #[derive(Debug)]
+/// A structure that represents the header of a WAD file.
 pub struct WADHeader {
     pub header_size: u32,
     pub wad_type: WADType,
@@ -61,6 +63,7 @@ pub struct WADHeader {
 }
 
 #[derive(Debug)]
+/// A structure that represent the data contained in the body of a WAD file.
 pub struct WADBody {
     cert_chain: Vec<u8>,
     crl: Vec<u8>,
@@ -71,6 +74,7 @@ pub struct WADBody {
 }
 
 impl WADHeader {
+    /// Creates a new WADHeader instance from the binary data of a WAD file's header.
     pub fn from_body(body: &WADBody) -> Result<WADHeader, WADError> {
         // Generates a new WADHeader from a populated WADBody object.
         // Parse the TMD and use that to determine if this is a standard WAD or a boot2 WAD.
@@ -103,6 +107,7 @@ impl WADHeader {
 }
 
 impl WADBody {
+    /// Creates a new WADBody instance from instances of the components stored in a WAD file.
     pub fn from_parts(cert_chain: &cert::CertificateChain, crl: &[u8], ticket: &ticket::Ticket, tmd: &tmd::TMD, 
                       content: &content::ContentRegion, meta: &[u8]) -> Result<WADBody, WADError> {
         let body = WADBody {
@@ -118,6 +123,7 @@ impl WADBody {
 }
 
 impl WAD {
+    /// Creates a new WAD instance from the binary data of a WAD file.
     pub fn from_bytes(data: &[u8]) -> Result<WAD, WADError> {
         let mut buf = Cursor::new(data);
         let header_size = buf.read_u32::<BigEndian>().map_err(WADError::IOError)?;
@@ -196,6 +202,8 @@ impl WAD {
         Ok(wad)
     }
     
+    /// Creates a new WAD instance from instances of the components stored in a WAD file. This
+    /// first creates a WADBody from the components, then generates a new WADHeader from them.
     pub fn from_parts(cert_chain: &cert::CertificateChain, crl: &[u8], ticket: &ticket::Ticket, tmd: &tmd::TMD,
                       content: &content::ContentRegion, meta: &[u8]) -> Result<WAD, WADError> {
         let body = WADBody::from_parts(cert_chain, crl, ticket, tmd, content, meta)?;
@@ -206,7 +214,8 @@ impl WAD {
         };
         Ok(wad)
     }
-
+    
+    /// Dumps the data in a WAD instance back into binary data that can be written to a file.
     pub fn to_bytes(&self) -> Result<Vec<u8>, WADError> {
         let mut buf = Vec::new();
         buf.write_u32::<BigEndian>(self.header.header_size).map_err(WADError::IOError)?;

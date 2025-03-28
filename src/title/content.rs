@@ -31,6 +31,7 @@ impl fmt::Display for ContentError {
 impl Error for ContentError {}
 
 #[derive(Debug)]
+/// A structure that represents the block of data containing the content of a digital Wii title.
 pub struct ContentRegion {
     pub content_records: Vec<ContentRecord>,
     pub content_region_size: u32,
@@ -97,6 +98,7 @@ impl ContentRegion {
         })
     }
     
+    /// Dumps the entire ContentRegion back into binary data that can be written to a file.
     pub fn to_bytes(&self) -> Result<Vec<u8>, std::io::Error> {
         let mut buf: Vec<u8> = Vec::new();
         for i in 0..self.num_contents {
@@ -107,12 +109,14 @@ impl ContentRegion {
         }
         Ok(buf)
     }
-    
+
+    /// Gets the encrypted content file from the ContentRegion at the specified index.
     pub fn get_enc_content_by_index(&self, index: usize) -> Result<Vec<u8>, ContentError> {
         let content = self.contents.get(index).ok_or(ContentError::IndexNotFound)?;
         Ok(content.clone())
     }
 
+    /// Gets the decrypted content file from the ContentRegion at the specified index.
     pub fn get_content_by_index(&self, index: usize, title_key: [u8; 16]) -> Result<Vec<u8>, ContentError> {
         let content = self.get_enc_content_by_index(index)?;
         // Verify the hash of the decrypted content against its record.
@@ -127,6 +131,7 @@ impl ContentRegion {
         Ok(content_dec)
     }
 
+    /// Gets the encrypted content file from the ContentRegion with the specified Content ID.
     pub fn get_enc_content_by_cid(&self, cid: u32) -> Result<Vec<u8>, ContentError> {
         let index = self.content_records.iter().position(|x| x.content_id == cid);
         if let Some(index) = index {
@@ -136,7 +141,8 @@ impl ContentRegion {
             Err(ContentError::CIDNotFound)
         }
     }
-    
+
+    /// Gets the decrypted content file from the ContentRegion with the specified Content ID.
     pub fn get_content_by_cid(&self, cid: u32, title_key: [u8; 16]) -> Result<Vec<u8>, ContentError> {
         let index = self.content_records.iter().position(|x| x.content_id == cid);
         if let Some(index) = index {
@@ -147,6 +153,9 @@ impl ContentRegion {
         }
     }
     
+    /// Loads existing content into the specified index of a ContentRegion instance. This content 
+    /// must be decrypted and needs to match the size and hash listed in the content record at that
+    /// index.
     pub fn load_content(&mut self, content: &[u8], index: usize, title_key: [u8; 16]) -> Result<(), ContentError> {
         if index >= self.content_records.len() {
             return Err(ContentError::IndexNotFound);

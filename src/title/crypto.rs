@@ -14,7 +14,7 @@ fn title_id_to_iv(title_id: [u8; 8]) -> [u8; 16] {
     iv.as_slice().try_into().unwrap()
 }
 
-// Decrypt a Title Key using the specified common key.
+/// Decrypts a Title Key using the specified common key and the corresponding Title ID.
 pub fn decrypt_title_key(title_key_enc: [u8; 16], common_key_index: u8, title_id: [u8; 8], is_dev: Option<bool>) -> [u8; 16] {
     let iv = title_id_to_iv(title_id);
     type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
@@ -24,7 +24,7 @@ pub fn decrypt_title_key(title_key_enc: [u8; 16], common_key_index: u8, title_id
     title_key
 }
 
-// Encrypt a Title Key using the specified common key.
+/// Encrypts a Title Key using the specified common key and the corresponding Title ID.
 pub fn encrypt_title_key(title_key_dec: [u8; 16], common_key_index: u8, title_id: [u8; 8], is_dev: Option<bool>) -> [u8; 16] {
     let iv = title_id_to_iv(title_id);
     type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
@@ -34,7 +34,7 @@ pub fn encrypt_title_key(title_key_dec: [u8; 16], common_key_index: u8, title_id
     title_key
 }
 
-// Decrypt content using a Title Key.
+/// Decrypt content using the corresponding Title Key and content index.
 pub fn decrypt_content(data: &[u8], title_key: [u8; 16], index: u16) -> Vec<u8> {
     let mut iv = Vec::from(index.to_be_bytes());
     iv.resize(16, 0);
@@ -45,7 +45,7 @@ pub fn decrypt_content(data: &[u8], title_key: [u8; 16], index: u16) -> Vec<u8> 
     buf
 }
 
-// Encrypt content using a Title Key.
+/// Encrypt content using the corresponding Title Key and content index.
 pub fn encrypt_content(data: &[u8], title_key: [u8; 16], index: u16, size: u64) -> Vec<u8> {
     let mut iv = Vec::from(index.to_be_bytes());
     iv.resize(16, 0);

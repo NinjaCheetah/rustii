@@ -41,6 +41,7 @@ pub struct TitleLimit {
 }
 
 #[derive(Debug)]
+/// A structure that represents a Wii Ticket file.
 pub struct Ticket {
     pub signature_type: u32,
     pub signature: [u8; 256],
@@ -67,6 +68,7 @@ pub struct Ticket {
 }
 
 impl Ticket {
+    /// Creates a new Ticket instance from the binary data of a Ticket file.
     pub fn from_bytes(data: &[u8]) -> Result<Self, TicketError> {
         let mut buf = Cursor::new(data);
         let signature_type = buf.read_u32::<BigEndian>().map_err(TicketError::IOError)?;
@@ -145,6 +147,7 @@ impl Ticket {
         })
     }
 
+    /// Dumps the data in a Ticket instance back into binary data that can be written to a file.
     pub fn to_bytes(&self) -> Result<Vec<u8>, std::io::Error> {
         let mut buf: Vec<u8> = Vec::new();
         buf.write_u32::<BigEndian>(self.signature_type)?;
@@ -176,18 +179,21 @@ impl Ticket {
         Ok(buf)
     }
 
+    /// Gets the decrypted version of the Title Key stored in a Ticket.
     pub fn dec_title_key(&self) -> [u8; 16] {
         // Get the dev status of this Ticket so decrypt_title_key knows the right common key.
         let is_dev = self.is_dev();
         decrypt_title_key(self.title_key, self.common_key_index, self.title_id, Some(is_dev))
     }
     
+    /// Gets whether a Ticket was signed for development (true) or retail (false).
     pub fn is_dev(&self) -> bool {
         // Parse the signature issuer to determine if this is a dev Ticket or not.
         let issuer_str = String::from_utf8(Vec::from(&self.signature_issuer)).unwrap_or_default();
         issuer_str.contains("Root-CA00000002-XS00000004") || issuer_str.contains("Root-CA00000002-XS00000006")
     }
     
+    /// Gets whether a Ticket is fakesigned using the strncmp (trucha) bug or not.
     pub fn is_fakesigned(&self) -> bool {
         // Can't be fakesigned without a null signature.
         if self.signature != [0; 256] {
@@ -204,6 +210,7 @@ impl Ticket {
         true
     }
     
+    /// Fakesigns a Ticket for use with the strncmp (trucha) bug.
     pub fn fakesign(&mut self) -> Result<(), TicketError> {
         // Erase the signature.
         self.signature = [0; 256];
@@ -221,6 +228,7 @@ impl Ticket {
         Ok(())
     }
 
+    /// Gets the name of the certificate used to sign a Ticket as a string.
     pub fn signature_issuer(&self) -> String {
         String::from_utf8_lossy(&self.signature_issuer).trim_end_matches('\0').to_owned()
     }

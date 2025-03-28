@@ -69,6 +69,10 @@ fn wii_menu_versions_map(vwii: Option<bool>) -> HashMap<u16, String> {
     menu_versions
 }
 
+/// Converts the decimal version of a title (vXXX) into a more standard format for applicable
+/// titles. For the Wii Menu, this uses the optional vwii argument and a hash table to determine
+/// the user-friendly version number, as there is no way to directly derive it from the decimal
+/// format.
 pub fn dec_to_standard(version: u16, title_id: &str, vwii: Option<bool>) -> Option<String> {
     if title_id == "0000000100000002" {
         let map = wii_menu_versions_map(vwii);
