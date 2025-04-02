@@ -5,7 +5,7 @@
 
 use std::{str, fs};
 use std::path::{Path, PathBuf};
-use clap::Subcommand;
+use clap::{Subcommand, Args};
 use glob::glob;
 use rustii::title::{cert, tmd, ticket, content, wad};
 use rustii::title;
@@ -13,16 +13,38 @@ use rustii::title;
 #[derive(Subcommand)]
 #[command(arg_required_else_help = true)]
 pub enum Commands {
+    /// Re-encrypt a WAD file with a different key
+    Convert {
+        /// The path to the WAD to convert
+        input: String,
+        /// An (optional) WAD name; defaults to <input name>_<new type>.wad
+        #[arg(short, long)]
+        output: Option<String>,
+    },
     /// Pack a directory into a WAD file
     Pack {
+        /// The directory to pack into a WAD
         input: String,
+        /// The name of the packed WAD file
         output: String
     },
     /// Unpack a WAD file into a directory
     Unpack {
+        /// The path to the WAD to unpack
         input: String,
+        /// The directory to extract the WAD to
         output: String
     }
+}
+
+#[derive(Args)]
+#[group(multiple = false, required = true)]
+struct ConvertTargets {
+    
+}
+
+pub fn convert_wad(input: &str, output: &Option<String>) {
+    todo!();
 }
 
 pub fn pack_wad(input: &str, output: &str) {

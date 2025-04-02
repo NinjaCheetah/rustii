@@ -26,12 +26,11 @@ fn print_tmd_info(tmd: tmd::TMD, cert: Option<cert::Certificate>) {
     } else {
         println!("  Title ID: {}", hex::encode(tmd.title_id).to_uppercase());
     }
-    if hex::encode(tmd.title_id)[..8].eq("00000001") {
-        if hex::encode(tmd.title_id).eq("0000000100000001") {
-            println!("  Title Version: {} (boot2v{})", tmd.title_version, tmd.title_version);
-        } else {
-            println!("  Title Version: {} ({})", tmd.title_version, versions::dec_to_standard(tmd.title_version, &hex::encode(tmd.title_id), Some(tmd.is_vwii != 0)).unwrap());
-        }
+    let converted_ver = versions::dec_to_standard(tmd.title_version, &hex::encode(tmd.title_id), Some(tmd.is_vwii != 0));
+    if hex::encode(tmd.title_id).eq("0000000100000001") {
+        println!("  Title Version: {} (boot2v{})", tmd.title_version, tmd.title_version);
+    } else if hex::encode(tmd.title_id)[..8].eq("00000001") && converted_ver.is_some() {
+        println!("  Title Version: {} ({})", tmd.title_version, converted_ver.unwrap());
     } else {
         println!("  Title Version: {}", tmd.title_version);
     }

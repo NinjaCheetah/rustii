@@ -46,6 +46,9 @@ fn main() {
     match &cli.command {
         Some(Commands::Wad { command }) => {
             match command {
+                Some(wad::Commands::Convert { input, output }) => {
+                    wad::convert_wad(input, output)  
+                },
                 Some(wad::Commands::Pack { input, output}) => {
                     wad::pack_wad(input, output)
                 },
