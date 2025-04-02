@@ -13,6 +13,7 @@ use sha1::{Sha1, Digest};
 #[derive(Debug)]
 pub enum TMDError {
     CannotFakesign,
+    IssuerTooLong,
     InvalidContentType(u16),
     IOError(std::io::Error),
 }
@@ -21,6 +22,7 @@ impl fmt::Display for TMDError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let description = match *self {
             TMDError::CannotFakesign => "The TMD data could not be fakesigned.",
+            TMDError::IssuerTooLong => "Signature issuer length must not exceed 64 characters.",
             TMDError::InvalidContentType(_) => "The TMD contains content with an invalid type.",
             TMDError::IOError(_) => "The provided TMD data was invalid.",
         };
@@ -349,5 +351,21 @@ impl TMD {
     /// Gets the name of the certificate used to sign a TMD as a string.
     pub fn signature_issuer(&self) -> String {
         String::from_utf8_lossy(&self.signature_issuer).trim_end_matches('\0').to_owned()
+    }
+    
+    /// Sets a new name for the certificate used to sign a TMD.
+    pub fn set_signature_issuer(&mut self, signature_issuer: String) -> Result<(), TMDError> {
+        if signature_issuer.len() > 64 {
+            return Err(TMDError::IssuerTooLong);
+        }
+        let mut issuer = signature_issuer.into_bytes();
+        issuer.resize(64, 0);
+        self.signature_issuer = issuer.try_into().unwrap();
+        Ok(())
+    }
+    
+    /// Gets whether this TMD describes a vWii title or not.
+    pub fn is_vwii(&self) -> bool {
+        self.is_vwii == 1
     }
 }

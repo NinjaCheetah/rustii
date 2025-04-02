@@ -7,6 +7,7 @@ mod title;
 mod filetypes;
 mod info;
 
+use anyhow::Result;
 use clap::{Subcommand, Parser};
 use title::{wad, fakesign};
 
@@ -40,14 +41,14 @@ enum Commands {
     }
 }
 
-fn main() {
+fn main() -> Result<()> {
     let cli = Cli::parse();
     
     match &cli.command {
         Some(Commands::Wad { command }) => {
             match command {
-                Some(wad::Commands::Convert { input, output }) => {
-                    wad::convert_wad(input, output)  
+                Some(wad::Commands::Convert { input, target, output }) => {
+                    wad::convert_wad(input, target, output)?
                 },
                 Some(wad::Commands::Pack { input, output}) => {
                     wad::pack_wad(input, output)
@@ -66,4 +67,5 @@ fn main() {
         }
         None => {}
     }
+    Ok(())
 }

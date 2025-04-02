@@ -14,6 +14,7 @@ use crate::title::crypto::decrypt_title_key;
 pub enum TicketError {
     UnsupportedVersion,
     CannotFakesign,
+    IssuerTooLong,
     IOError(std::io::Error),
 }
 
@@ -22,6 +23,7 @@ impl fmt::Display for TicketError {
         let description = match *self {
             TicketError::UnsupportedVersion => "The provided Ticket is not a supported version (only v0 is supported).",
             TicketError::CannotFakesign => "The Ticket data could not be fakesigned.",
+            TicketError::IssuerTooLong => "Signature issuer length must not exceed 64 characers.",
             TicketError::IOError(_) => "The provided Ticket data was invalid.",
         };
         f.write_str(description)
@@ -231,5 +233,16 @@ impl Ticket {
     /// Gets the name of the certificate used to sign a Ticket as a string.
     pub fn signature_issuer(&self) -> String {
         String::from_utf8_lossy(&self.signature_issuer).trim_end_matches('\0').to_owned()
+    }
+
+    /// Sets a new name for the certificate used to sign a Ticket.
+    pub fn set_signature_issuer(&mut self, signature_issuer: String) -> Result<(), TicketError> {
+        if signature_issuer.len() > 64 {
+            return Err(TicketError::IssuerTooLong);
+        }
+        let mut issuer = signature_issuer.into_bytes();
+        issuer.resize(64, 0);
+        self.signature_issuer = issuer.try_into().unwrap();
+        Ok(())
     }
 }

@@ -92,7 +92,13 @@ fn print_tmd_info(tmd: tmd::TMD, cert: Option<cert::Certificate>) {
                     }
                 },
             },
-            Err(_) => "Invalid (Modified TMD)"
+            Err(_) => {
+                if tmd.is_fakesigned() {
+                    "Fakesigned"
+                } else {
+                    "Invalid (Modified TMD)"
+                }
+            }
         };
         println!("  Signature: {}", signing_str);
     } else {
@@ -120,12 +126,11 @@ fn print_ticket_info(ticket: ticket::Ticket, cert: Option<cert::Certificate>) {
     } else {
         println!("  Title ID: {}", hex::encode(ticket.title_id).to_uppercase());
     }
-    if hex::encode(ticket.title_id)[..8].eq("00000001") {
-        if hex::encode(ticket.title_id).eq("0000000100000001") {
-            println!("  Title Version: {} (boot2v{})", ticket.title_version, ticket.title_version);
-        } else {
-            println!("  Title Version: {} ({})", ticket.title_version, versions::dec_to_standard(ticket.title_version, &hex::encode(ticket.title_id), Some(ticket.common_key_index == 2)).unwrap());
-        }
+    let converted_ver = versions::dec_to_standard(ticket.title_version, &hex::encode(ticket.title_id), None);
+    if hex::encode(ticket.title_id).eq("0000000100000001") {
+        println!("  Title Version: {} (boot2v{})", ticket.title_version, ticket.title_version);
+    } else if hex::encode(ticket.title_id)[..8].eq("00000001") && converted_ver.is_some() {
+        println!("  Title Version: {} ({})", ticket.title_version, converted_ver.unwrap());
     } else {
         println!("  Title Version: {}", ticket.title_version);
     }
@@ -167,7 +172,13 @@ fn print_ticket_info(ticket: ticket::Ticket, cert: Option<cert::Certificate>) {
                     }
                 },
             },
-            Err(_) => "Invalid (Modified Ticket)"
+            Err(_) => {
+                if ticket.is_fakesigned() {
+                    "Fakesigned"
+                } else {
+                    "Invalid (Modified Ticket)"
+                }
+            }
         };
         println!("  Signature: {}", signing_str);
     } else {
@@ -214,7 +225,13 @@ fn print_wad_info(wad: wad::WAD) {
                 }
             },
         },
-        Err(_) => "Illegitimate (Modified TMD + Ticket)"
+        Err(_) => {
+            if title.is_fakesigned() {
+                "Fakesigned"
+            } else {
+                "Illegitimate (Modified TMD + Ticket)"
+            }
+        }
     };
     println!("  Signing Status: {}", signing_str);
     println!();
