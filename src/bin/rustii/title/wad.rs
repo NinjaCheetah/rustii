@@ -74,7 +74,7 @@ impl fmt::Display for Target {
 pub fn convert_wad(input: &str, target: &ConvertTargets, output: &Option<String>) -> Result<()> {
     let in_path = Path::new(input);
     if !in_path.exists() {
-        bail!("Source WAD \"{}\" could not be found.", input);
+        bail!("Source WAD \"{}\" could not be found.", in_path.display());
     }
     // Parse the target passed to identify the encryption target.
     let target = if target.dev {
@@ -119,18 +119,21 @@ pub fn convert_wad(input: &str, target: &ConvertTargets, output: &Option<String>
             title.ticket.set_signature_issuer(String::from("Root-CA00000002-XS00000006"))?;
             title_key_new = crypto::encrypt_title_key(title_key, 0, title.ticket.title_id, Some(true));
             title.ticket.common_key_index = 0;
+            title.tmd.is_vwii = 0;
         },
         Target::Retail => {
             title.tmd.set_signature_issuer(String::from("Root-CA00000001-CP00000004"))?;
             title.ticket.set_signature_issuer(String::from("Root-CA00000001-XS00000003"))?;
             title_key_new = crypto::encrypt_title_key(title_key, 0, title.ticket.title_id, Some(false));
             title.ticket.common_key_index = 0;
+            title.tmd.is_vwii = 0;
         },
         Target::Vwii => {
             title.tmd.set_signature_issuer(String::from("Root-CA00000001-CP00000004"))?;
             title.ticket.set_signature_issuer(String::from("Root-CA00000001-XS00000003"))?;
             title_key_new = crypto::encrypt_title_key(title_key, 2, title.ticket.title_id, Some(false));
             title.ticket.common_key_index = 2;
+            title.tmd.is_vwii = 1;
         }
     }
     title.ticket.title_key = title_key_new;
@@ -140,56 +143,56 @@ pub fn convert_wad(input: &str, target: &ConvertTargets, output: &Option<String>
     Ok(())
 }
 
-pub fn pack_wad(input: &str, output: &str) {
+pub fn pack_wad(input: &str, output: &str) -> Result<()> {
     let in_path = Path::new(input);
     if !in_path.exists() {
-        panic!("Error: Source directory does not exist.");
+        bail!("Source directory \"{}\" does not exist.", in_path.display());
     }
     // Read TMD file (only accept one file).
-    let tmd_files: Vec<PathBuf> = glob(&format!("{}/*.tmd", in_path.display()))
-        .expect("failed to read glob pattern")
+    let tmd_files: Vec<PathBuf> = glob(&format!("{}/*.tmd", in_path.display()))?
         .filter_map(|f| f.ok()).collect();
     if tmd_files.is_empty() {
-        panic!("Error: No TMD file found in the source directory.");
+        bail!("No TMD file found in the source directory.");
     } else if tmd_files.len() > 1 {
-        panic!("Error: More than one TMD file found in the source directory.")
+        bail!("More than one TMD file found in the source directory.");
     }
-    let tmd = tmd::TMD::from_bytes(&fs::read(&tmd_files[0]).expect("could not read TMD file")).unwrap();
+    let tmd = tmd::TMD::from_bytes(&fs::read(&tmd_files[0]).with_context(|| "Could not open TMD file for reading.")?)
+        .with_context(|| "The provided TMD file appears to be invalid.")?;
     // Read Ticket file (only accept one file).
-    let ticket_files: Vec<PathBuf> = glob(&format!("{}/*.tik", in_path.display()))
-        .expect("failed to read glob pattern")
+    let ticket_files: Vec<PathBuf> = glob(&format!("{}/*.tik", in_path.display()))?
         .filter_map(|f| f.ok()).collect();
     if ticket_files.is_empty() {
-        panic!("Error: No Ticket file found in the source directory.");
+        bail!("No Ticket file found in the source directory.");
     } else if ticket_files.len() > 1 {
-        panic!("Error: More than one Ticket file found in the source directory.")
+        bail!("More than one Ticket file found in the source directory.");
     }
-    let tik = ticket::Ticket::from_bytes(&fs::read(&ticket_files[0]).expect("could not read Ticket file")).unwrap();
+    let tik = ticket::Ticket::from_bytes(&fs::read(&ticket_files[0]).with_context(|| "Could not open Ticket file for reading.")?)
+        .with_context(|| "The provided Ticket file appears to be invalid.")?;
     // Read cert chain (only accept one file).
-    let cert_files: Vec<PathBuf> = glob(&format!("{}/*.cert", in_path.display()))
-        .expect("failed to read glob pattern")
+    let cert_files: Vec<PathBuf> = glob(&format!("{}/*.cert", in_path.display()))?
         .filter_map(|f| f.ok()).collect();
     if cert_files.is_empty() {
-        panic!("Error: No cert file found in the source directory.");
+        bail!("No cert file found in the source directory.");
     } else if cert_files.len() > 1 {
-        panic!("Error: More than one Cert file found in the source directory.")
+        bail!("More than one Cert file found in the source directory.");
     }
-    let cert_chain = cert::CertificateChain::from_bytes(&fs::read(&cert_files[0]).expect("could not read cert chain file")).unwrap();
+    let cert_chain = cert::CertificateChain::from_bytes(&fs::read(&cert_files[0]).with_context(|| "Could not open cert chain file for reading.")?)
+        .with_context(|| "The provided certificate chain appears to be invalid.")?;
     // Read footer, if one exists (only accept one file).
-    let footer_files: Vec<PathBuf> = glob(&format!("{}/*.footer", in_path.display()))
-        .expect("failed to read glob pattern")
+    let footer_files: Vec<PathBuf> = glob(&format!("{}/*.footer", in_path.display()))?
         .filter_map(|f| f.ok()).collect();
     let mut footer: Vec<u8> = Vec::new();
     if footer_files.len() == 1 {
-        footer = fs::read(&footer_files[0]).unwrap();
+        footer = fs::read(&footer_files[0]).with_context(|| "Could not open footer file for reading.")?;
     }
     // Iterate over expected content and read it into a content region.
-    let mut content_region = content::ContentRegion::new(tmd.content_records.clone()).expect("could not create content region");
+    let mut content_region = content::ContentRegion::new(tmd.content_records.clone())?;
     for content in tmd.content_records.clone() {
-        let data = fs::read(format!("{}/{:08X}.app", in_path.display(), content.index)).expect("could not read required content");
-        content_region.load_content(&data, content.index as usize, tik.dec_title_key()).expect("failed to load content into ContentRegion");
+        let data = fs::read(format!("{}/{:08X}.app", in_path.display(), content.index)).with_context(|| format!("Could not open content file \"{:08X}.app\" for reading.", content.index))?;
+        content_region.load_content(&data, content.index as usize, tik.dec_title_key())
+            .expect("failed to load content into ContentRegion, this is probably because content was modified which isn't supported yet");
     }
-    let wad = wad::WAD::from_parts(&cert_chain, &[], &tik, &tmd, &content_region, &footer).expect("failed to create WAD");
+    let wad = wad::WAD::from_parts(&cert_chain, &[], &tik, &tmd, &content_region, &footer).with_context(|| "An unknown error occurred while building a WAD from the input files.")?;
     // Write out WAD file.
     let mut out_path = PathBuf::from(output);
     match out_path.extension() {
@@ -202,33 +205,39 @@ pub fn pack_wad(input: &str, output: &str) {
             out_path.set_extension("wad");
         }
     }
-    fs::write(out_path, wad.to_bytes().unwrap()).expect("could not write to wad file");
+    fs::write(out_path.clone(), wad.to_bytes()?).with_context(|| format!("Could not open output file \"{}\" for writing.", out_path.display()))?;
     println!("WAD file packed!");
+    Ok(())
 }
 
-pub fn unpack_wad(input: &str, output: &str) {
-    let wad_file = fs::read(input).expect("could not read WAD");
-    let title = title::Title::from_bytes(&wad_file).unwrap();
+pub fn unpack_wad(input: &str, output: &str) -> Result<()> {
+    let in_path = Path::new(input);
+    if !in_path.exists() {
+        bail!("Source WAD \"{}\" could not be found.", input);
+    }
+    let wad_file = fs::read(in_path).with_context(|| format!("Failed to open WAD file \"{}\" for reading.", in_path.display()))?;
+    let title = title::Title::from_bytes(&wad_file).with_context(|| format!("The provided WAD file \"{}\" appears to be invalid.", in_path.display()))?;
     let tid = hex::encode(title.tmd.title_id);
     // Create output directory if it doesn't exist.
-    if !Path::new(output).exists() {
-        fs::create_dir(output).expect("could not create output directory");
-    }
     let out_path = Path::new(output);
+    if !Path::new(out_path).exists() {
+        fs::create_dir(out_path).with_context(|| format!("The output directory \"{}\" could not be created.", out_path.display()))?;
+    }
     // Write out all WAD components.
     let tmd_file_name = format!("{}.tmd", tid);
-    fs::write(Path::join(out_path, tmd_file_name), title.tmd.to_bytes().unwrap()).expect("could not write TMD file");
+    fs::write(Path::join(out_path, tmd_file_name.clone()), title.tmd.to_bytes()?).with_context(|| format!("Failed to open TMD file \"{}\" for writing.", tmd_file_name))?;
     let ticket_file_name = format!("{}.tik", tid);
-    fs::write(Path::join(out_path, ticket_file_name), title.ticket.to_bytes().unwrap()).expect("could not write Ticket file");
+    fs::write(Path::join(out_path, ticket_file_name.clone()), title.ticket.to_bytes()?).with_context(|| format!("Failed to open Ticket file \"{}\" for writing.", ticket_file_name))?;
     let cert_file_name = format!("{}.cert", tid);
-    fs::write(Path::join(out_path, cert_file_name), title.cert_chain.to_bytes().unwrap()).expect("could not write Cert file");
+    fs::write(Path::join(out_path, cert_file_name.clone()), title.cert_chain.to_bytes()?).with_context(|| format!("Failed to open certificate chain file \"{}\" for writing.", cert_file_name))?;
     let meta_file_name = format!("{}.footer", tid);
-    fs::write(Path::join(out_path, meta_file_name), title.meta()).expect("could not write footer file");
+    fs::write(Path::join(out_path, meta_file_name.clone()), title.meta()).with_context(|| format!("Failed to open footer file \"{}\" for writing.", meta_file_name))?;
     // Iterate over contents, decrypt them, and write them out.
     for i in 0..title.tmd.num_contents {
         let content_file_name = format!("{:08X}.app", title.content.content_records[i as usize].index);
-        let dec_content = title.get_content_by_index(i as usize).unwrap();
-        fs::write(Path::join(out_path, content_file_name), dec_content).unwrap();
+        let dec_content = title.get_content_by_index(i as usize).with_context(|| format!("Failed to unpack content with Content ID {:08X}.", title.content.content_records[i as usize].content_id))?;
+        fs::write(Path::join(out_path, content_file_name), dec_content).with_context(|| format!("Failed to open content file \"{:08X}.app\" for writing.", title.content.content_records[i as usize].content_id))?;
     }
     println!("WAD file unpacked!");
+    Ok(())
 }

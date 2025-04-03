@@ -126,7 +126,7 @@ fn print_ticket_info(ticket: ticket::Ticket, cert: Option<cert::Certificate>) {
     } else {
         println!("  Title ID: {}", hex::encode(ticket.title_id).to_uppercase());
     }
-    let converted_ver = versions::dec_to_standard(ticket.title_version, &hex::encode(ticket.title_id), None);
+    let converted_ver = versions::dec_to_standard(ticket.title_version, &hex::encode(ticket.title_id), Some(ticket.common_key_index == 2));
     if hex::encode(ticket.title_id).eq("0000000100000001") {
         println!("  Title Version: {} (boot2v{})", ticket.title_version, ticket.title_version);
     } else if hex::encode(ticket.title_id)[..8].eq("00000001") && converted_ver.is_some() {

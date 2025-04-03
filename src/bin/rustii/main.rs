@@ -51,10 +51,10 @@ fn main() -> Result<()> {
                     wad::convert_wad(input, target, output)?
                 },
                 Some(wad::Commands::Pack { input, output}) => {
-                    wad::pack_wad(input, output)
+                    wad::pack_wad(input, output)?
                 },
                 Some(wad::Commands::Unpack { input, output }) => {
-                    wad::unpack_wad(input, output)
+                    wad::unpack_wad(input, output)?
                 },
                 &None => { /* This is for me handled by clap */}
             }
