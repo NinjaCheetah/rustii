@@ -12,42 +12,27 @@ pub mod tmd;
 pub mod versions;
 pub mod wad;
 
-use std::error::Error;
-use std::fmt;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum TitleError {
-    BadCertChain,
-    BadTicket,
-    BadTMD,
-    BadContent,
+    #[error("the data for required Title component `{0}` was invalid")]
+    InvalidData(String),
+    #[error("WAD data is not in a valid format")]
     InvalidWAD,
-    CertificateError(cert::CertificateError),
-    TMDError(tmd::TMDError),
-    TicketError(ticket::TicketError),
-    WADError(wad::WADError),
-    IOError(std::io::Error),
+    #[error("certificate processing error")]
+    CertificateError(#[from] cert::CertificateError),
+    #[error("TMD processing error")]
+    TMD(#[from] tmd::TMDError),
+    #[error("Ticket processing error")]
+    Ticket(#[from] ticket::TicketError),
+    #[error("content processing error")]
+    Content(#[from] content::ContentError),
+    #[error("WAD processing error")]
+    WAD(#[from] wad::WADError),
+    #[error("WAD data is not in a valid format")]
+    IO(#[from] std::io::Error),
 }
-
-impl fmt::Display for TitleError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let description = match *self {
-            TitleError::BadCertChain => "The provided certificate chain data was invalid.",
-            TitleError::BadTicket => "The provided Ticket data was invalid.",
-            TitleError::BadTMD => "The provided TMD data was invalid.",
-            TitleError::BadContent => "The provided content data was invalid.",
-            TitleError::InvalidWAD => "The provided WAD data was invalid.",
-            TitleError::CertificateError(_) => "An error occurred while processing certificate data.",
-            TitleError::TMDError(_) => "An error occurred while processing TMD data.",
-            TitleError::TicketError(_) => "An error occurred while processing ticket data.",
-            TitleError::WADError(_) => "A WAD could not be built from the provided data.",
-            TitleError::IOError(_) => "The provided Title data was invalid.",
-        };
-        f.write_str(description)
-    }
-}
-
-impl Error for TitleError {}
 
 #[derive(Debug)]
 /// A structure that represents the components of a digital Wii title.
@@ -63,10 +48,10 @@ pub struct Title {
 impl Title {
     /// Creates a new Title instance from an existing WAD instance.
     pub fn from_wad(wad: &wad::WAD) -> Result<Title, TitleError> {
-        let cert_chain = cert::CertificateChain::from_bytes(&wad.cert_chain()).map_err(|_| TitleError::BadCertChain)?;
-        let ticket = ticket::Ticket::from_bytes(&wad.ticket()).map_err(|_| TitleError::BadTicket)?;
-        let tmd = tmd::TMD::from_bytes(&wad.tmd()).map_err(|_| TitleError::BadTMD)?;
-        let content = content::ContentRegion::from_bytes(&wad.content(), tmd.content_records.clone()).map_err(|_| TitleError::BadContent)?;
+        let cert_chain = cert::CertificateChain::from_bytes(&wad.cert_chain()).map_err(TitleError::CertificateError)?;
+        let ticket = ticket::Ticket::from_bytes(&wad.ticket()).map_err(TitleError::Ticket)?;
+        let tmd = tmd::TMD::from_bytes(&wad.tmd()).map_err(TitleError::TMD)?;
+        let content = content::ContentRegion::from_bytes(&wad.content(), tmd.content_records.clone()).map_err(TitleError::Content)?;
         let title = Title {
             cert_chain,
             crl: wad.crl(),
@@ -88,7 +73,7 @@ impl Title {
             &self.tmd,
             &self.content,
             &self.meta
-        ).map_err(TitleError::WADError)?;
+        ).map_err(TitleError::WAD)?;
         Ok(wad)
     }
     
@@ -107,8 +92,8 @@ impl Title {
     /// Fakesigns the TMD and Ticket of a Title.
     pub fn fakesign(&mut self) -> Result<(), TitleError> {
         // Run the fakesign methods on the TMD and Ticket.
-        self.tmd.fakesign().map_err(TitleError::TMDError)?;
-        self.ticket.fakesign().map_err(TitleError::TicketError)?;
+        self.tmd.fakesign().map_err(TitleError::TMD)?;
+        self.ticket.fakesign().map_err(TitleError::Ticket)?;
         Ok(())
     }
     
@@ -130,8 +115,8 @@ impl Title {
         let mut title_size: usize = 0;
         // Get the TMD and Ticket size by dumping them and measuring their length for the most
         // accurate results.
-        title_size += self.tmd.to_bytes().map_err(|x| TitleError::TMDError(tmd::TMDError::IOError(x)))?.len();
-        title_size += self.ticket.to_bytes().map_err(|x| TitleError::TicketError(ticket::TicketError::IOError(x)))?.len();
+        title_size += self.tmd.to_bytes().map_err(|x| TitleError::TMD(tmd::TMDError::IO(x)))?.len();
+        title_size += self.ticket.to_bytes().map_err(|x| TitleError::Ticket(ticket::TicketError::IO(x)))?.len();
         for record in &self.tmd.content_records {
             if matches!(record.content_type, tmd::ContentType::Shared) {
                 if absolute == Some(true) {

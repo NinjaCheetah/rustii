@@ -3,38 +3,25 @@
 //
 // Implements the structures and methods required for Ticket parsing and editing.
 
-use std::error::Error;
-use std::fmt;
 use std::io::{Cursor, Read, Write};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use sha1::{Sha1, Digest};
+use thiserror::Error;
 use crate::title::crypto::decrypt_title_key;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum TicketError {
-    UnsupportedVersion,
+    #[error("Ticket is version `{0}` but only v0 is supported")]
+    UnsupportedVersion(u8),
+    #[error("Ticket data could not be fakesigned")]
     CannotFakesign,
-    IssuerTooLong,
-    IOError(std::io::Error),
+    #[error("signature issuer string must not exceed 64 characters (was {0})")]
+    IssuerTooLong(usize),
+    #[error("Ticket data is not in a valid format")]
+    IO(#[from] std::io::Error),
 }
 
-impl fmt::Display for TicketError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let description = match *self {
-            TicketError::UnsupportedVersion => "The provided Ticket is not a supported version (only v0 is supported).",
-            TicketError::CannotFakesign => "The Ticket data could not be fakesigned.",
-            TicketError::IssuerTooLong => "Signature issuer length must not exceed 64 characers.",
-            TicketError::IOError(_) => "The provided Ticket data was invalid.",
-        };
-        f.write_str(description)
-    }
-}
-
-impl Error for TicketError {}
-
-#[derive(Debug)]
-#[derive(Copy)]
-#[derive(Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct TitleLimit {
     // The type of limit being applied (time, launch count, etc.)
     pub limit_type: u32,
@@ -73,53 +60,53 @@ impl Ticket {
     /// Creates a new Ticket instance from the binary data of a Ticket file.
     pub fn from_bytes(data: &[u8]) -> Result<Self, TicketError> {
         let mut buf = Cursor::new(data);
-        let signature_type = buf.read_u32::<BigEndian>().map_err(TicketError::IOError)?;
+        let signature_type = buf.read_u32::<BigEndian>().map_err(TicketError::IO)?;
         let mut signature = [0u8; 256];
-        buf.read_exact(&mut signature).map_err(TicketError::IOError)?;
+        buf.read_exact(&mut signature).map_err(TicketError::IO)?;
         // Maybe this can be read differently?
         let mut padding1 = [0u8; 60];
-        buf.read_exact(&mut padding1).map_err(TicketError::IOError)?;
+        buf.read_exact(&mut padding1).map_err(TicketError::IO)?;
         let mut signature_issuer = [0u8; 64];
-        buf.read_exact(&mut signature_issuer).map_err(TicketError::IOError)?;
+        buf.read_exact(&mut signature_issuer).map_err(TicketError::IO)?;
         let mut ecdh_data = [0u8; 60];
-        buf.read_exact(&mut ecdh_data).map_err(TicketError::IOError)?;
-        let ticket_version = buf.read_u8().map_err(TicketError::IOError)?;
+        buf.read_exact(&mut ecdh_data).map_err(TicketError::IO)?;
+        let ticket_version = buf.read_u8().map_err(TicketError::IO)?;
         // v1 Tickets are NOT supported (just like in libWiiPy).
         if ticket_version != 0 {
-            return Err(TicketError::UnsupportedVersion);
+            return Err(TicketError::UnsupportedVersion(ticket_version));
         }
         let mut reserved1 = [0u8; 2];
-        buf.read_exact(&mut reserved1).map_err(TicketError::IOError)?;
+        buf.read_exact(&mut reserved1).map_err(TicketError::IO)?;
         let mut title_key = [0u8; 16];
-        buf.read_exact(&mut title_key).map_err(TicketError::IOError)?;
+        buf.read_exact(&mut title_key).map_err(TicketError::IO)?;
         let mut unknown1 = [0u8; 1];
-        buf.read_exact(&mut unknown1).map_err(TicketError::IOError)?;
+        buf.read_exact(&mut unknown1).map_err(TicketError::IO)?;
         let mut ticket_id = [0u8; 8];
-        buf.read_exact(&mut ticket_id).map_err(TicketError::IOError)?;
+        buf.read_exact(&mut ticket_id).map_err(TicketError::IO)?;
         let mut console_id = [0u8; 4];
-        buf.read_exact(&mut console_id).map_err(TicketError::IOError)?;
+        buf.read_exact(&mut console_id).map_err(TicketError::IO)?;
         let mut title_id = [0u8; 8];
-        buf.read_exact(&mut title_id).map_err(TicketError::IOError)?;
+        buf.read_exact(&mut title_id).map_err(TicketError::IO)?;
         let mut unknown2 = [0u8; 2];
-        buf.read_exact(&mut unknown2).map_err(TicketError::IOError)?;
-        let title_version = buf.read_u16::<BigEndian>().map_err(TicketError::IOError)?;
+        buf.read_exact(&mut unknown2).map_err(TicketError::IO)?;
+        let title_version = buf.read_u16::<BigEndian>().map_err(TicketError::IO)?;
         let mut permitted_titles_mask = [0u8; 4];
-        buf.read_exact(&mut permitted_titles_mask).map_err(TicketError::IOError)?;
+        buf.read_exact(&mut permitted_titles_mask).map_err(TicketError::IO)?;
         let mut permit_mask = [0u8; 4];
-        buf.read_exact(&mut permit_mask).map_err(TicketError::IOError)?;
-        let title_export_allowed = buf.read_u8().map_err(TicketError::IOError)?;
-        let common_key_index = buf.read_u8().map_err(TicketError::IOError)?;
+        buf.read_exact(&mut permit_mask).map_err(TicketError::IO)?;
+        let title_export_allowed = buf.read_u8().map_err(TicketError::IO)?;
+        let common_key_index = buf.read_u8().map_err(TicketError::IO)?;
         let mut unknown3 = [0u8; 48];
-        buf.read_exact(&mut unknown3).map_err(TicketError::IOError)?;
+        buf.read_exact(&mut unknown3).map_err(TicketError::IO)?;
         let mut content_access_permission = [0u8; 64];
-        buf.read_exact(&mut content_access_permission).map_err(TicketError::IOError)?;
+        buf.read_exact(&mut content_access_permission).map_err(TicketError::IO)?;
         let mut padding2 = [0u8; 2];
-        buf.read_exact(&mut padding2).map_err(TicketError::IOError)?;
+        buf.read_exact(&mut padding2).map_err(TicketError::IO)?;
         // Build the array of title limits.
         let mut title_limits: Vec<TitleLimit> = Vec::new();
         for _ in 0..8 {
-            let limit_type = buf.read_u32::<BigEndian>().map_err(TicketError::IOError)?;
-            let limit_max = buf.read_u32::<BigEndian>().map_err(TicketError::IOError)?;
+            let limit_type = buf.read_u32::<BigEndian>().map_err(TicketError::IO)?;
+            let limit_max = buf.read_u32::<BigEndian>().map_err(TicketError::IO)?;
             title_limits.push(TitleLimit { limit_type, limit_max });
         }
         let title_limits = title_limits.try_into().unwrap();
@@ -223,7 +210,7 @@ impl Ticket {
             current_int += 1;
             self.unknown2 = current_int.to_be_bytes();
             let mut hasher = Sha1::new();
-            let ticket_body = self.to_bytes().unwrap();
+            let ticket_body = self.to_bytes()?;
             hasher.update(&ticket_body[320..]);
             test_hash = <[u8; 20]>::from(hasher.finalize());
         }
@@ -238,7 +225,7 @@ impl Ticket {
     /// Sets a new name for the certificate used to sign a Ticket.
     pub fn set_signature_issuer(&mut self, signature_issuer: String) -> Result<(), TicketError> {
         if signature_issuer.len() > 64 {
-            return Err(TicketError::IssuerTooLong);
+            return Err(TicketError::IssuerTooLong(signature_issuer.len()));
         }
         let mut issuer = signature_issuer.into_bytes();
         issuer.resize(64, 0);

@@ -3,36 +3,25 @@
 //
 // Implements the structures and methods required for WAD parsing and editing.
 
-use std::error::Error;
-use std::fmt;
 use std::str;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use thiserror::Error;
 use crate::title::{cert, tmd, ticket, content};
 use crate::title::ticket::TicketError;
 use crate::title::tmd::TMDError;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum WADError {
-    BadType,
-    TMDError(TMDError),
-    TicketError(TicketError),
-    IOError(std::io::Error),
+    #[error("WAD is invalid type `{0}`")]
+    BadType(String),
+    #[error("TMD processing error")]
+    TMD(#[from] TMDError),
+    #[error("Ticket processing error")]
+    Ticket(#[from] TicketError),
+    #[error("WAD data is not in a valid format")]
+    IO(#[from] std::io::Error),
 }
-
-impl fmt::Display for WADError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let description = match *self {
-            WADError::BadType => "An invalid WAD type was specified.",
-            WADError::TMDError(_) => "An error occurred while loading TMD data.",
-            WADError::TicketError(_) => "An error occurred while loading Ticket data.",
-            WADError::IOError(_) => "The provided WAD data was invalid.",
-        };
-        f.write_str(description)
-    }
-}
-
-impl Error for WADError {}
 
 #[derive(Debug)]
 pub enum WADType {
@@ -78,7 +67,7 @@ impl WADHeader {
     pub fn from_body(body: &WADBody) -> Result<WADHeader, WADError> {
         // Generates a new WADHeader from a populated WADBody object.
         // Parse the TMD and use that to determine if this is a standard WAD or a boot2 WAD.
-        let tmd = tmd::TMD::from_bytes(&body.tmd).map_err(WADError::TMDError)?;
+        let tmd = tmd::TMD::from_bytes(&body.tmd).map_err(WADError::TMD)?;
         let wad_type = match hex::encode(tmd.title_id).as_str() {
             "0000000100000001" => WADType::ImportBoot,
             _ => WADType::Installable,
@@ -111,11 +100,11 @@ impl WADBody {
     pub fn from_parts(cert_chain: &cert::CertificateChain, crl: &[u8], ticket: &ticket::Ticket, tmd: &tmd::TMD, 
                       content: &content::ContentRegion, meta: &[u8]) -> Result<WADBody, WADError> {
         let body = WADBody {
-            cert_chain: cert_chain.to_bytes().map_err(WADError::IOError)?,
+            cert_chain: cert_chain.to_bytes().map_err(WADError::IO)?,
             crl: crl.to_vec(),
-            ticket: ticket.to_bytes().map_err(WADError::IOError)?,
-            tmd: tmd.to_bytes().map_err(WADError::IOError)?,
-            content: content.to_bytes().map_err(WADError::IOError)?,
+            ticket: ticket.to_bytes().map_err(WADError::IO)?,
+            tmd: tmd.to_bytes().map_err(WADError::IO)?,
+            content: content.to_bytes().map_err(WADError::IO)?,
             meta: meta.to_vec(),
         };
         Ok(body)
@@ -126,27 +115,27 @@ impl WAD {
     /// Creates a new WAD instance from the binary data of a WAD file.
     pub fn from_bytes(data: &[u8]) -> Result<WAD, WADError> {
         let mut buf = Cursor::new(data);
-        let header_size = buf.read_u32::<BigEndian>().map_err(WADError::IOError)?;
+        let header_size = buf.read_u32::<BigEndian>().map_err(WADError::IO)?;
         let mut wad_type = [0u8; 2];
-        buf.read_exact(&mut wad_type).map_err(WADError::IOError)?;
+        buf.read_exact(&mut wad_type).map_err(WADError::IO)?;
         let wad_type = match str::from_utf8(&wad_type) {
             Ok(wad_type) => match wad_type {
                 "Is" => WADType::Installable,
                 "ib" => WADType::ImportBoot,
-                _ => return Err(WADError::BadType),
+                _ => return Err(WADError::BadType(wad_type.to_string())),
             },
-            Err(_) => return Err(WADError::BadType),
+            Err(_) => return Err(WADError::BadType(String::new())),
         };
-        let wad_version = buf.read_u16::<BigEndian>().map_err(WADError::IOError)?;
-        let cert_chain_size = buf.read_u32::<BigEndian>().map_err(WADError::IOError)?;
-        let crl_size = buf.read_u32::<BigEndian>().map_err(WADError::IOError)?;
-        let ticket_size = buf.read_u32::<BigEndian>().map_err(WADError::IOError)?;
-        let tmd_size = buf.read_u32::<BigEndian>().map_err(WADError::IOError)?;
+        let wad_version = buf.read_u16::<BigEndian>().map_err(WADError::IO)?;
+        let cert_chain_size = buf.read_u32::<BigEndian>().map_err(WADError::IO)?;
+        let crl_size = buf.read_u32::<BigEndian>().map_err(WADError::IO)?;
+        let ticket_size = buf.read_u32::<BigEndian>().map_err(WADError::IO)?;
+        let tmd_size = buf.read_u32::<BigEndian>().map_err(WADError::IO)?;
         // Round the content size to the nearest 16.
-        let content_size = (buf.read_u32::<BigEndian>().map_err(WADError::IOError)? + 15) & !15;
-        let meta_size = buf.read_u32::<BigEndian>().map_err(WADError::IOError)?;
+        let content_size = (buf.read_u32::<BigEndian>().map_err(WADError::IO)? + 15) & !15;
+        let meta_size = buf.read_u32::<BigEndian>().map_err(WADError::IO)?;
         let mut padding = [0u8; 32];
-        buf.read_exact(&mut padding).map_err(WADError::IOError)?;
+        buf.read_exact(&mut padding).map_err(WADError::IO)?;
         // Build header so we can use that data to read the WAD data.
         let header = WADHeader {
             header_size,
@@ -168,24 +157,24 @@ impl WAD {
         let content_offset = (tmd_offset + header.tmd_size + 63) & !63;
         let meta_offset = (content_offset + header.content_size + 63) & !63;
         // Read cert chain data.
-        buf.seek(SeekFrom::Start(cert_chain_offset as u64)).map_err(WADError::IOError)?;
+        buf.seek(SeekFrom::Start(cert_chain_offset as u64)).map_err(WADError::IO)?;
         let mut cert_chain = vec![0u8; header.cert_chain_size as usize];
-        buf.read_exact(&mut cert_chain).map_err(WADError::IOError)?;
-        buf.seek(SeekFrom::Start(crl_offset as u64)).map_err(WADError::IOError)?;
+        buf.read_exact(&mut cert_chain).map_err(WADError::IO)?;
+        buf.seek(SeekFrom::Start(crl_offset as u64)).map_err(WADError::IO)?;
         let mut crl = vec![0u8; header.crl_size as usize];
-        buf.read_exact(&mut crl).map_err(WADError::IOError)?;
-        buf.seek(SeekFrom::Start(ticket_offset as u64)).map_err(WADError::IOError)?;
+        buf.read_exact(&mut crl).map_err(WADError::IO)?;
+        buf.seek(SeekFrom::Start(ticket_offset as u64)).map_err(WADError::IO)?;
         let mut ticket = vec![0u8; header.ticket_size as usize];
-        buf.read_exact(&mut ticket).map_err(WADError::IOError)?;
-        buf.seek(SeekFrom::Start(tmd_offset as u64)).map_err(WADError::IOError)?;
+        buf.read_exact(&mut ticket).map_err(WADError::IO)?;
+        buf.seek(SeekFrom::Start(tmd_offset as u64)).map_err(WADError::IO)?;
         let mut tmd = vec![0u8; header.tmd_size as usize];
-        buf.read_exact(&mut tmd).map_err(WADError::IOError)?;
-        buf.seek(SeekFrom::Start(content_offset as u64)).map_err(WADError::IOError)?;
+        buf.read_exact(&mut tmd).map_err(WADError::IO)?;
+        buf.seek(SeekFrom::Start(content_offset as u64)).map_err(WADError::IO)?;
         let mut content = vec![0u8; header.content_size as usize];
-        buf.read_exact(&mut content).map_err(WADError::IOError)?;
-        buf.seek(SeekFrom::Start(meta_offset as u64)).map_err(WADError::IOError)?;
+        buf.read_exact(&mut content).map_err(WADError::IO)?;
+        buf.seek(SeekFrom::Start(meta_offset as u64)).map_err(WADError::IO)?;
         let mut meta = vec![0u8; header.meta_size as usize];
-        buf.read_exact(&mut meta).map_err(WADError::IOError)?;
+        buf.read_exact(&mut meta).map_err(WADError::IO)?;
         let body = WADBody {
             cert_chain,
             crl,
@@ -218,32 +207,32 @@ impl WAD {
     /// Dumps the data in a WAD instance back into binary data that can be written to a file.
     pub fn to_bytes(&self) -> Result<Vec<u8>, WADError> {
         let mut buf = Vec::new();
-        buf.write_u32::<BigEndian>(self.header.header_size).map_err(WADError::IOError)?;
+        buf.write_u32::<BigEndian>(self.header.header_size).map_err(WADError::IO)?;
         match self.header.wad_type {
-            WADType::Installable => { buf.write("Is".as_bytes()).map_err(WADError::IOError)?; },
-            WADType::ImportBoot => { buf.write("ib".as_bytes()).map_err(WADError::IOError)?; },
+            WADType::Installable => { buf.write("Is".as_bytes()).map_err(WADError::IO)?; },
+            WADType::ImportBoot => { buf.write("ib".as_bytes()).map_err(WADError::IO)?; },
         }
-        buf.write_u16::<BigEndian>(self.header.wad_version).map_err(WADError::IOError)?;
-        buf.write_u32::<BigEndian>(self.header.cert_chain_size).map_err(WADError::IOError)?;
-        buf.write_u32::<BigEndian>(self.header.crl_size).map_err(WADError::IOError)?;
-        buf.write_u32::<BigEndian>(self.header.ticket_size).map_err(WADError::IOError)?;
-        buf.write_u32::<BigEndian>(self.header.tmd_size).map_err(WADError::IOError)?;
-        buf.write_u32::<BigEndian>(self.header.content_size).map_err(WADError::IOError)?;
-        buf.write_u32::<BigEndian>(self.header.meta_size).map_err(WADError::IOError)?;
-        buf.write_all(&self.header.padding).map_err(WADError::IOError)?;
+        buf.write_u16::<BigEndian>(self.header.wad_version).map_err(WADError::IO)?;
+        buf.write_u32::<BigEndian>(self.header.cert_chain_size).map_err(WADError::IO)?;
+        buf.write_u32::<BigEndian>(self.header.crl_size).map_err(WADError::IO)?;
+        buf.write_u32::<BigEndian>(self.header.ticket_size).map_err(WADError::IO)?;
+        buf.write_u32::<BigEndian>(self.header.tmd_size).map_err(WADError::IO)?;
+        buf.write_u32::<BigEndian>(self.header.content_size).map_err(WADError::IO)?;
+        buf.write_u32::<BigEndian>(self.header.meta_size).map_err(WADError::IO)?;
+        buf.write_all(&self.header.padding).map_err(WADError::IO)?;
         // Pad up to nearest multiple of 64. This also needs to happen after each section of data.
         buf.resize((buf.len() + 63) & !63, 0);
-        buf.write_all(&self.body.cert_chain).map_err(WADError::IOError)?;
+        buf.write_all(&self.body.cert_chain).map_err(WADError::IO)?;
         buf.resize((buf.len() + 63) & !63, 0);
-        buf.write_all(&self.body.crl).map_err(WADError::IOError)?;
+        buf.write_all(&self.body.crl).map_err(WADError::IO)?;
         buf.resize((buf.len() + 63) & !63, 0);
-        buf.write_all(&self.body.ticket).map_err(WADError::IOError)?;
+        buf.write_all(&self.body.ticket).map_err(WADError::IO)?;
         buf.resize((buf.len() + 63) & !63, 0);
-        buf.write_all(&self.body.tmd).map_err(WADError::IOError)?;
+        buf.write_all(&self.body.tmd).map_err(WADError::IO)?;
         buf.resize((buf.len() + 63) & !63, 0);
-        buf.write_all(&self.body.content).map_err(WADError::IOError)?;
+        buf.write_all(&self.body.content).map_err(WADError::IO)?;
         buf.resize((buf.len() + 63) & !63, 0);
-        buf.write_all(&self.body.meta).map_err(WADError::IOError)?;
+        buf.write_all(&self.body.meta).map_err(WADError::IO)?;
         buf.resize((buf.len() + 63) & !63, 0);
         Ok(buf)
     }

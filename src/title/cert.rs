@@ -3,43 +3,32 @@
 //
 // Implements the structures and methods required for validating the signatures of Wii titles.
 
-use std::error::Error;
-use std::fmt;
 use std::io::{Cursor, Read, Write, SeekFrom, Seek};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use rsa::pkcs8::DecodePublicKey;
 use rsa::pkcs1v15::Pkcs1v15Sign;
 use rsa::{RsaPublicKey, BigUint};
 use sha1::{Digest, Sha1};
+use thiserror::Error;
 use crate::title::{tmd, ticket};
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum CertificateError {
+    #[error("certificate appears to be signed with invalid key type `{0}`")]
     InvalidSignatureKeyType(u32),
+    #[error("certificate appears to contain key with invalid type `{0}`")]
     InvalidContainedKeyType(u32),
+    #[error("certificate chain contains an unknown certificate")]
     UnknownCertificate,
+    #[error("certificate chain is missing required certificate `{0}`")]
     MissingCertificate(String),
+    #[error("attempted to load incorrect certificate `{0}`")]
     IncorrectCertificate(String),
+    #[error("the data you are attempting to verify was not signed with the provided certificate")]
     NonMatchingCertificates,
-    IOError(std::io::Error),
+    #[error("certificate data is not in a valid format")]
+    IO(#[from] std::io::Error),
 }
-
-impl fmt::Display for CertificateError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let description = match *self {
-            CertificateError::InvalidSignatureKeyType(_) => "The key type this certificate appears to be signed with is not valid.",
-            CertificateError::InvalidContainedKeyType(_) => "The key type contained in this certificate is not valid.",
-            CertificateError::UnknownCertificate => "An unknown certificate was found in the certificate chain.",
-            CertificateError::MissingCertificate(_) => "A required certificate was not found in the certificate chain.",
-            CertificateError::IncorrectCertificate(_) => "A provided certificate did not match the expected type.",
-            CertificateError::NonMatchingCertificates => "The provided certificate does not match the data you are attempting to verify with it.",
-            CertificateError::IOError(_) => "The provided certificate data was invalid.",
-        };
-        f.write_str(description)
-    }
-}
-
-impl Error for CertificateError {}
 
 #[derive(Debug, Clone)]
 pub enum CertificateKeyType {
@@ -65,7 +54,7 @@ impl Certificate {
     /// Creates a new Certificate instance from the binary data of a certificate file.
     pub fn from_bytes(data: &[u8]) -> Result<Self, CertificateError> {
         let mut buf = Cursor::new(data);
-        let signer_key_type_int = buf.read_u32::<BigEndian>().map_err(CertificateError::IOError)?;
+        let signer_key_type_int = buf.read_u32::<BigEndian>().map_err(CertificateError::IO)?;
         let signer_key_type = match signer_key_type_int {
             0x00010000 => CertificateKeyType::Rsa4096,
             0x00010001 => CertificateKeyType::Rsa2048,
@@ -78,12 +67,12 @@ impl Certificate {
             CertificateKeyType::ECC => 60,
         };
         let mut signature = vec![0u8; signature_len];
-        buf.read_exact(&mut signature).map_err(CertificateError::IOError)?;
+        buf.read_exact(&mut signature).map_err(CertificateError::IO)?;
         // Skip past padding at the end of the signature.
-        buf.seek(SeekFrom::Start(0x40 + signature_len as u64)).map_err(CertificateError::IOError)?;
+        buf.seek(SeekFrom::Start(0x40 + signature_len as u64)).map_err(CertificateError::IO)?;
         let mut signature_issuer = [0u8; 64];
-        buf.read_exact(&mut signature_issuer).map_err(CertificateError::IOError)?;
-        let pub_key_type_int = buf.read_u32::<BigEndian>().map_err(CertificateError::IOError)?;
+        buf.read_exact(&mut signature_issuer).map_err(CertificateError::IO)?;
+        let pub_key_type_int = buf.read_u32::<BigEndian>().map_err(CertificateError::IO)?;
         let pub_key_type = match pub_key_type_int {
             0x00000000 => CertificateKeyType::Rsa4096,
             0x00000001 => CertificateKeyType::Rsa2048,
@@ -91,25 +80,25 @@ impl Certificate {
             _ => return Err(CertificateError::InvalidContainedKeyType(pub_key_type_int))
         };
         let mut child_cert_identity = [0u8; 64];
-        buf.read_exact(&mut child_cert_identity).map_err(CertificateError::IOError)?;
-        let pub_key_id = buf.read_u32::<BigEndian>().map_err(CertificateError::IOError)?;
+        buf.read_exact(&mut child_cert_identity).map_err(CertificateError::IO)?;
+        let pub_key_id = buf.read_u32::<BigEndian>().map_err(CertificateError::IO)?;
         let mut pub_key_modulus: Vec<u8>;
         let mut pub_key_exponent: u32 = 0;
         // The key size and exponent are different based on the key type. ECC has no exponent.
         match pub_key_type {
             CertificateKeyType::Rsa4096 => {
                 pub_key_modulus = vec![0u8; 512];
-                buf.read_exact(&mut pub_key_modulus).map_err(CertificateError::IOError)?;
-                pub_key_exponent = buf.read_u32::<BigEndian>().map_err(CertificateError::IOError)?;
+                buf.read_exact(&mut pub_key_modulus).map_err(CertificateError::IO)?;
+                pub_key_exponent = buf.read_u32::<BigEndian>().map_err(CertificateError::IO)?;
             },
             CertificateKeyType::Rsa2048 => {
                 pub_key_modulus = vec![0u8; 256];
-                buf.read_exact(&mut pub_key_modulus).map_err(CertificateError::IOError)?;
-                pub_key_exponent = buf.read_u32::<BigEndian>().map_err(CertificateError::IOError)?;
+                buf.read_exact(&mut pub_key_modulus).map_err(CertificateError::IO)?;
+                pub_key_exponent = buf.read_u32::<BigEndian>().map_err(CertificateError::IO)?;
             },
             CertificateKeyType::ECC => {
                 pub_key_modulus = vec![0u8; 60];
-                buf.read_exact(&mut pub_key_modulus).map_err(CertificateError::IOError)?;
+                buf.read_exact(&mut pub_key_modulus).map_err(CertificateError::IO)?;
             }
         }
         Ok(Certificate {
@@ -196,16 +185,16 @@ impl CertificateChain {
         let mut ticket_cert: Option<Certificate> = None;
         // Iterate 3 times, because the chain should contain 3 certs.
         for _ in 0..3 {
-            buf.seek(SeekFrom::Start(offset)).map_err(CertificateError::IOError)?;
-            let signer_key_type = buf.read_u32::<BigEndian>().map_err(CertificateError::IOError)?;
+            buf.seek(SeekFrom::Start(offset)).map_err(CertificateError::IO)?;
+            let signer_key_type = buf.read_u32::<BigEndian>().map_err(CertificateError::IO)?;
             let signature_len = match signer_key_type {
                 0x00010000 => 512, // 0x200
                 0x00010001 => 256, // 0x100
                 0x00010002 => 60,
                 _ => return Err(CertificateError::InvalidSignatureKeyType(signer_key_type))
             };
-            buf.seek(SeekFrom::Start(offset + 0x80 + signature_len)).map_err(CertificateError::IOError)?;
-            let pub_key_type = buf.read_u32::<BigEndian>().map_err(CertificateError::IOError)?;
+            buf.seek(SeekFrom::Start(offset + 0x80 + signature_len)).map_err(CertificateError::IO)?;
+            let pub_key_type = buf.read_u32::<BigEndian>().map_err(CertificateError::IO)?;
             let pub_key_len = match pub_key_type {
                 0x00000000 => 568, // 0x238
                 0x00000001 => 312, // 0x138
@@ -215,10 +204,10 @@ impl CertificateChain {
             // Cert size is the base length (0xC8) + the signature length + the public key length.
             // Like a lot of values, it needs to be rounded to the nearest multiple of 64.
             let cert_size = (0xC8 + signature_len + pub_key_len + 63) & !63;
-            buf.seek(SeekFrom::End(0)).map_err(CertificateError::IOError)?;
-            buf.seek(SeekFrom::Start(offset)).map_err(CertificateError::IOError)?;
+            buf.seek(SeekFrom::End(0)).map_err(CertificateError::IO)?;
+            buf.seek(SeekFrom::Start(offset)).map_err(CertificateError::IO)?;
             let mut cert_buf = vec![0u8; cert_size as usize];
-            buf.read_exact(&mut cert_buf).map_err(CertificateError::IOError)?;
+            buf.read_exact(&mut cert_buf).map_err(CertificateError::IO)?;
             let cert = Certificate::from_bytes(&cert_buf)?;
             let issuer_name = String::from_utf8_lossy(&cert.signature_issuer).trim_end_matches('\0').to_owned();
             if issuer_name.eq("Root") {
@@ -310,7 +299,7 @@ pub fn verify_ca_cert(ca_cert: &Certificate) -> Result<bool, CertificateError> {
         return Err(CertificateError::UnknownCertificate);
     };
     let mut hasher = Sha1::new();
-    let cert_body = ca_cert.to_bytes().unwrap();
+    let cert_body = ca_cert.to_bytes()?;
     hasher.update(&cert_body[576..]);
     let cert_hash = hasher.finalize().as_slice().to_owned();
     match root_key.verify(Pkcs1v15Sign::new::<Sha1>(), &cert_hash, ca_cert.signature.as_slice()) {
@@ -330,7 +319,7 @@ pub fn verify_child_cert(ca_cert: &Certificate, child_cert: &Certificate) -> Res
         return Err(CertificateError::NonMatchingCertificates)
     }
     let mut hasher = Sha1::new();
-    hasher.update(&child_cert.to_bytes().map_err(CertificateError::IOError)?[320..]);
+    hasher.update(&child_cert.to_bytes().map_err(CertificateError::IO)?[320..]);
     let cert_hash = hasher.finalize().as_slice().to_owned();
     let public_key_modulus = BigUint::from_bytes_be(&ca_cert.pub_key_modulus());
     let public_key_exponent = BigUint::from(ca_cert.pub_key_exponent());
@@ -352,7 +341,7 @@ pub fn verify_tmd(tmd_cert: &Certificate, tmd: &tmd::TMD) -> Result<bool, Certif
         return Err(CertificateError::NonMatchingCertificates)
     }
     let mut hasher = Sha1::new();
-    hasher.update(&tmd.to_bytes().map_err(CertificateError::IOError)?[320..]);
+    hasher.update(&tmd.to_bytes().map_err(CertificateError::IO)?[320..]);
     let tmd_hash = hasher.finalize().as_slice().to_owned();
     let public_key_modulus = BigUint::from_bytes_be(&tmd_cert.pub_key_modulus());
     let public_key_exponent = BigUint::from(tmd_cert.pub_key_exponent());
@@ -374,7 +363,7 @@ pub fn verify_ticket(ticket_cert: &Certificate, ticket: &ticket::Ticket) -> Resu
         return Err(CertificateError::NonMatchingCertificates)
     }
     let mut hasher = Sha1::new();
-    hasher.update(&ticket.to_bytes().map_err(CertificateError::IOError)?[320..]);
+    hasher.update(&ticket.to_bytes().map_err(CertificateError::IO)?[320..]);
     let ticket_hash = hasher.finalize().as_slice().to_owned();
     let public_key_modulus = BigUint::from_bytes_be(&ticket_cert.pub_key_modulus());
     let public_key_exponent = BigUint::from(ticket_cert.pub_key_exponent());
