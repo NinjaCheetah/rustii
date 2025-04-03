@@ -60,7 +60,7 @@ fn main() -> Result<()> {
             }
         },
         Some(Commands::Fakesign { input, output }) => {
-            fakesign::fakesign(input, output)
+            fakesign::fakesign(input, output)?
         },
         Some(Commands::Info { input }) => {
             info::info(input)

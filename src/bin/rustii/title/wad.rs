@@ -94,7 +94,7 @@ pub fn convert_wad(input: &str, target: &ConvertTargets, output: &Option<String>
             Target::Vwii => PathBuf::from(format!("{}_vWii", in_path.file_stem().unwrap().to_str().unwrap())).with_extension("wad"),
         }
     };
-    let mut title = title::Title::from_bytes(fs::read(in_path)?.as_slice()).with_context(|| "The provided WAD file could not be loaded, and is likely invalid.")?;
+    let mut title = title::Title::from_bytes(fs::read(in_path)?.as_slice()).with_context(|| "The provided WAD file could not be parsed, and is likely invalid.")?;
     // Bail if the WAD is already using the selected encryption.
     if matches!(target, Target::Dev) && title.ticket.is_dev() {
         bail!("This is already a development WAD!");
