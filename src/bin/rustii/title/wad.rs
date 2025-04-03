@@ -117,21 +117,21 @@ pub fn convert_wad(input: &str, target: &ConvertTargets, output: &Option<String>
         Target::Dev => {
             title.tmd.set_signature_issuer(String::from("Root-CA00000002-CP00000007"))?;
             title.ticket.set_signature_issuer(String::from("Root-CA00000002-XS00000006"))?;
-            title_key_new = crypto::encrypt_title_key(title_key, 0, title.ticket.title_id, Some(true));
+            title_key_new = crypto::encrypt_title_key(title_key, 0, title.ticket.title_id, true);
             title.ticket.common_key_index = 0;
             title.tmd.is_vwii = 0;
         },
         Target::Retail => {
             title.tmd.set_signature_issuer(String::from("Root-CA00000001-CP00000004"))?;
             title.ticket.set_signature_issuer(String::from("Root-CA00000001-XS00000003"))?;
-            title_key_new = crypto::encrypt_title_key(title_key, 0, title.ticket.title_id, Some(false));
+            title_key_new = crypto::encrypt_title_key(title_key, 0, title.ticket.title_id, false);
             title.ticket.common_key_index = 0;
             title.tmd.is_vwii = 0;
         },
         Target::Vwii => {
             title.tmd.set_signature_issuer(String::from("Root-CA00000001-CP00000004"))?;
             title.ticket.set_signature_issuer(String::from("Root-CA00000001-XS00000003"))?;
-            title_key_new = crypto::encrypt_title_key(title_key, 2, title.ticket.title_id, Some(false));
+            title_key_new = crypto::encrypt_title_key(title_key, 2, title.ticket.title_id, false);
             title.ticket.common_key_index = 2;
             title.tmd.is_vwii = 1;
         }

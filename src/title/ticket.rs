@@ -185,7 +185,7 @@ impl Ticket {
     pub fn dec_title_key(&self) -> [u8; 16] {
         // Get the dev status of this Ticket so decrypt_title_key knows the right common key.
         let is_dev = self.is_dev();
-        decrypt_title_key(self.title_key, self.common_key_index, self.title_id, Some(is_dev))
+        decrypt_title_key(self.title_key, self.common_key_index, self.title_id, is_dev)
     }
     
     /// Gets whether a Ticket was signed for development (true) or retail (false).

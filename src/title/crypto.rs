@@ -15,7 +15,7 @@ fn title_id_to_iv(title_id: [u8; 8]) -> [u8; 16] {
 }
 
 /// Decrypts a Title Key using the specified common key and the corresponding Title ID.
-pub fn decrypt_title_key(title_key_enc: [u8; 16], common_key_index: u8, title_id: [u8; 8], is_dev: Option<bool>) -> [u8; 16] {
+pub fn decrypt_title_key(title_key_enc: [u8; 16], common_key_index: u8, title_id: [u8; 8], is_dev: bool) -> [u8; 16] {
     let iv = title_id_to_iv(title_id);
     type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
     let decryptor = Aes128CbcDec::new(&get_common_key(common_key_index, is_dev).into(), &iv.into());
@@ -25,7 +25,7 @@ pub fn decrypt_title_key(title_key_enc: [u8; 16], common_key_index: u8, title_id
 }
 
 /// Encrypts a Title Key using the specified common key and the corresponding Title ID.
-pub fn encrypt_title_key(title_key_dec: [u8; 16], common_key_index: u8, title_id: [u8; 8], is_dev: Option<bool>) -> [u8; 16] {
+pub fn encrypt_title_key(title_key_dec: [u8; 16], common_key_index: u8, title_id: [u8; 8], is_dev: bool) -> [u8; 16] {
     let iv = title_id_to_iv(title_id);
     type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
     let encryptor = Aes128CbcEnc::new(&get_common_key(common_key_index, is_dev).into(), &iv.into());
