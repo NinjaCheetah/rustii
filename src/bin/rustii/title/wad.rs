@@ -220,7 +220,7 @@ pub fn unpack_wad(input: &str, output: &str) -> Result<()> {
     let tid = hex::encode(title.tmd.title_id);
     // Create output directory if it doesn't exist.
     let out_path = Path::new(output);
-    if !Path::new(out_path).exists() {
+    if !out_path.exists() {
         fs::create_dir(out_path).with_context(|| format!("The output directory \"{}\" could not be created.", out_path.display()))?;
     }
     // Write out all WAD components.

@@ -5,35 +5,44 @@
 
 use std::{str, fs};
 use std::path::Path;
+use anyhow::{bail, Context, Result};
 use rustii::{title, title::cert, title::tmd, title::ticket, title::wad, title::versions};
 use crate::filetypes::{WiiFileType, identify_file_type};
 
-fn tid_to_ascii(tid: [u8; 8]) -> Option<String> {
-    let tid = String::from_utf8_lossy(&tid[4..]).trim_end_matches('\0').trim_start_matches('\0').to_owned();
-    if tid.len() == 4 {
-        Some(tid)
+// Avoids duplicated code, since both TMD and Ticket info print the TID in the same way.
+fn print_tid(title_id: [u8; 8]) -> Result<()> {
+    let ascii = String::from_utf8_lossy(&title_id[4..]).trim_end_matches('\0').trim_start_matches('\0').to_owned();
+    let ascii_tid = if ascii.len() == 4 {
+        Some(ascii)
     } else {
         None
+    };
+    if ascii_tid.is_some() {
+        println!("  Title ID: {} ({})", hex::encode(title_id).to_uppercase(), ascii_tid.unwrap());
+    } else {
+        println!("  Title ID: {}", hex::encode(title_id).to_uppercase());
     }
+    Ok(())
 }
 
-fn print_tmd_info(tmd: tmd::TMD, cert: Option<cert::Certificate>) {
+// Same as above, both the TMD and Ticket info print the title version in the same way.
+fn print_title_version(title_version: u16, title_id: [u8; 8], is_vwii: bool) -> Result<()> {
+    let converted_ver = versions::dec_to_standard(title_version, &hex::encode(title_id), Some(is_vwii));
+    if hex::encode(title_id).eq("0000000100000001") {
+        println!("  Title Version: {} (boot2v{})", title_version, title_version);
+    } else if hex::encode(title_id)[..8].eq("00000001") && converted_ver.is_some() {
+        println!("  Title Version: {} ({})", title_version, converted_ver.unwrap());
+    } else {
+        println!("  Title Version: {}", title_version);
+    }
+    Ok(())
+}
+
+fn print_tmd_info(tmd: tmd::TMD, cert: Option<cert::Certificate>) -> Result<()> {
     // Print all important keys from the TMD.
     println!("Title Info");
-    let ascii_tid = tid_to_ascii(tmd.title_id);
-    if ascii_tid.is_some() {
-        println!("  Title ID: {} ({})", hex::encode(tmd.title_id).to_uppercase(), ascii_tid.unwrap());
-    } else {
-        println!("  Title ID: {}", hex::encode(tmd.title_id).to_uppercase());
-    }
-    let converted_ver = versions::dec_to_standard(tmd.title_version, &hex::encode(tmd.title_id), Some(tmd.is_vwii != 0));
-    if hex::encode(tmd.title_id).eq("0000000100000001") {
-        println!("  Title Version: {} (boot2v{})", tmd.title_version, tmd.title_version);
-    } else if hex::encode(tmd.title_id)[..8].eq("00000001") && converted_ver.is_some() {
-        println!("  Title Version: {} ({})", tmd.title_version, converted_ver.unwrap());
-    } else {
-        println!("  Title Version: {}", tmd.title_version);
-    }
+    print_tid(tmd.title_id)?;
+    print_title_version(tmd.title_version, tmd.title_id, tmd.is_vwii())?;
     println!("  TMD Version: {}", tmd.tmd_version);
     if hex::encode(tmd.ios_tid).eq("0000000000000000") {
         println!("  Required IOS: N/A");
@@ -115,25 +124,14 @@ fn print_tmd_info(tmd: tmd::TMD, cert: Option<cert::Certificate>) {
         println!("      Content Size: {} bytes", content.content_size);
         println!("      Content Hash: {}", hex::encode(content.content_hash));
     }
+    Ok(())
 }
 
-fn print_ticket_info(ticket: ticket::Ticket, cert: Option<cert::Certificate>) {
+fn print_ticket_info(ticket: ticket::Ticket, cert: Option<cert::Certificate>) -> Result<()> {
     // Print all important keys from the Ticket.
     println!("Ticket Info");
-    let ascii_tid = tid_to_ascii(ticket.title_id);
-    if ascii_tid.is_some() {
-        println!("  Title ID: {} ({})", hex::encode(ticket.title_id).to_uppercase(), ascii_tid.unwrap());
-    } else {
-        println!("  Title ID: {}", hex::encode(ticket.title_id).to_uppercase());
-    }
-    let converted_ver = versions::dec_to_standard(ticket.title_version, &hex::encode(ticket.title_id), Some(ticket.common_key_index == 2));
-    if hex::encode(ticket.title_id).eq("0000000100000001") {
-        println!("  Title Version: {} (boot2v{})", ticket.title_version, ticket.title_version);
-    } else if hex::encode(ticket.title_id)[..8].eq("00000001") && converted_ver.is_some() {
-        println!("  Title Version: {} ({})", ticket.title_version, converted_ver.unwrap());
-    } else {
-        println!("  Title Version: {}", ticket.title_version);
-    }
+    print_tid(ticket.title_id)?;
+    print_title_version(ticket.title_version, ticket.title_id, ticket.common_key_index == 2)?;
     println!("  Ticket Version: {}", ticket.ticket_version);
     let signature_issuer = String::from_utf8(Vec::from(ticket.signature_issuer)).unwrap_or_default();
     if signature_issuer.contains("XS00000003") {
@@ -184,25 +182,26 @@ fn print_ticket_info(ticket: ticket::Ticket, cert: Option<cert::Certificate>) {
     } else {
         println!("  Fakesigned: {}", ticket.is_fakesigned());
     }
+    Ok(())
 }
 
-fn print_wad_info(wad: wad::WAD) {
+fn print_wad_info(wad: wad::WAD) -> Result<()> {
     println!("WAD Info");
     match wad.header.wad_type {
         wad::WADType::ImportBoot => { println!("  WAD Type: boot2") },
         wad::WADType::Installable => { println!("  WAD Type: Standard Installable") },
     }
     // Create a Title for size info, signing info and TMD/Ticket info.
-    let title = title::Title::from_wad(&wad).unwrap();
-    let min_size_blocks = title.title_size_blocks(None).unwrap();
-    let max_size_blocks = title.title_size_blocks(Some(true)).unwrap();
+    let title = title::Title::from_wad(&wad).with_context(|| "The provided WAD file could not be parsed, and is likely invalid.")?;
+    let min_size_blocks = title.title_size_blocks(None)?;
+    let max_size_blocks = title.title_size_blocks(Some(true))?;
     if min_size_blocks == max_size_blocks {
         println!("  Installed Size: {} blocks", min_size_blocks);
     } else {
         println!("  Installed Size: {}-{} blocks", min_size_blocks, max_size_blocks);
     }
-    let min_size = title.title_size(None).unwrap() as f64 / 1048576.0;
-    let max_size = title.title_size(Some(true)).unwrap() as f64 / 1048576.0;
+    let min_size = title.title_size(None)? as f64 / 1048576.0;
+    let max_size = title.title_size(Some(true))? as f64 / 1048576.0;
     if min_size == max_size {
         println!("  Installed Size (MB): {:.2} MB", min_size);
     } else {
@@ -216,9 +215,9 @@ fn print_wad_info(wad: wad::WAD) {
             false => {
                 if title.is_fakesigned() {
                     "Fakesigned"
-                } else if cert::verify_tmd(&title.cert_chain.tmd_cert(), &title.tmd).unwrap() {
+                } else if cert::verify_tmd(&title.cert_chain.tmd_cert(), &title.tmd)? {
                     "Piratelegit (Unmodified TMD, Modified Ticket)"
-                } else if  cert::verify_ticket(&title.cert_chain.ticket_cert(), &title.ticket).unwrap() {
+                } else if  cert::verify_ticket(&title.cert_chain.ticket_cert(), &title.ticket)? {
                     "Edited (Modified TMD, Unmodified Ticket)"
                 } else {
                     "Illegitimate (Modified TMD + Ticket)"
@@ -235,31 +234,33 @@ fn print_wad_info(wad: wad::WAD) {
     };
     println!("  Signing Status: {}", signing_str);
     println!();
-    print_ticket_info(title.ticket, Some(title.cert_chain.ticket_cert()));
+    print_ticket_info(title.ticket, Some(title.cert_chain.ticket_cert()))?;
     println!();
-    print_tmd_info(title.tmd, Some(title.cert_chain.tmd_cert()));
+    print_tmd_info(title.tmd, Some(title.cert_chain.tmd_cert()))?;
+    Ok(())
 }
 
-pub fn info(input: &str) {
+pub fn info(input: &str) -> Result<()> {
     let in_path = Path::new(input);
     if !in_path.exists() {
-        panic!("Error: Input file does not exist.");
+        bail!("Input file \"{}\" does not exist.", in_path.display());
     }
     match identify_file_type(input) {
         Some(WiiFileType::Tmd) => {
-            let tmd = tmd::TMD::from_bytes(fs::read(in_path).unwrap().as_slice()).unwrap();
-            print_tmd_info(tmd, None);
+            let tmd = tmd::TMD::from_bytes(fs::read(in_path)?.as_slice()).with_context(|| "The provided TMD file could not be parsed, and is likely invalid.")?;
+            print_tmd_info(tmd, None)?;
         },
         Some(WiiFileType::Ticket) => {
-            let ticket = ticket::Ticket::from_bytes(fs::read(in_path).unwrap().as_slice()).unwrap();
-            print_ticket_info(ticket, None);
+            let ticket = ticket::Ticket::from_bytes(fs::read(in_path)?.as_slice()).with_context(|| "The provided Ticket file could not be parsed, and is likely invalid.")?;
+            print_ticket_info(ticket, None)?;
         },
         Some(WiiFileType::Wad) => {
-            let wad = wad::WAD::from_bytes(fs::read(in_path).unwrap().as_slice()).unwrap();
-            print_wad_info(wad);
+            let wad = wad::WAD::from_bytes(fs::read(in_path)?.as_slice()).with_context(|| "The provided WAD file could not be parsed, and is likely invalid.")?;
+            print_wad_info(wad)?;
         },
         None => {
-            println!("Error: Information cannot be displayed for this file.");
+            bail!("Information cannot be displayed for this file type.");
         }
     }
+    Ok(())
 }
