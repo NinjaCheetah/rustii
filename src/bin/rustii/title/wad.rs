@@ -89,9 +89,9 @@ pub fn convert_wad(input: &str, target: &ConvertTargets, output: &Option<String>
         PathBuf::from(output.clone().unwrap()).with_extension("wad")
     } else {
         match target {
-            Target::Retail => PathBuf::from(format!("{}_retail", in_path.file_stem().unwrap().to_str().unwrap())).with_extension("wad"),
-            Target::Dev => PathBuf::from(format!("{}_dev", in_path.file_stem().unwrap().to_str().unwrap())).with_extension("wad"),
-            Target::Vwii => PathBuf::from(format!("{}_vWii", in_path.file_stem().unwrap().to_str().unwrap())).with_extension("wad"),
+            Target::Retail => PathBuf::from(format!("{}_retail.wad", in_path.file_stem().unwrap().to_str().unwrap())),
+            Target::Dev => PathBuf::from(format!("{}_dev.wad", in_path.file_stem().unwrap().to_str().unwrap())),
+            Target::Vwii => PathBuf::from(format!("{}_vWii.wad", in_path.file_stem().unwrap().to_str().unwrap())),
         }
     };
     let mut title = title::Title::from_bytes(fs::read(in_path)?.as_slice()).with_context(|| "The provided WAD file could not be parsed, and is likely invalid.")?;
