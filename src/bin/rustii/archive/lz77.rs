@@ -30,8 +30,20 @@ pub enum Commands {
     }
 }
 
-pub fn compress_lz77(_input: &str, _output: &Option<String>) -> Result<()> {
-    bail!("compression is not yet implemented");
+pub fn compress_lz77(input: &str, output: &Option<String>) -> Result<()> {
+    let in_path = Path::new(input);
+    if !in_path.exists() {
+        bail!("Input file \"{}\" could not be found.", in_path.display());
+    }
+    let decompressed = fs::read(in_path)?;
+    let compressed = lz77::compress_lz77(&decompressed).with_context(|| "An unknown error occurred while compressing the data.")?;
+    let out_path = if output.is_some() {
+        PathBuf::from(output.clone().unwrap())
+    } else {
+        PathBuf::from(in_path).with_extension("lz77")
+    };
+    fs::write(out_path, compressed)?;
+    Ok(())
 }
 
 pub fn decompress_lz77(input: &str, output: &Option<String>) -> Result<()> {
