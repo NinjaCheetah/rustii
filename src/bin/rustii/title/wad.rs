@@ -18,7 +18,7 @@ pub enum Commands {
     Convert {
         /// The path to the WAD to convert
         input: String,
-        /// An (optional) WAD name; defaults to <input name>_<new type>.wad
+        /// An optional WAD name; defaults to <input name>_<new type>.wad
         #[arg(short, long)]
         output: Option<String>,
         #[command(flatten)]

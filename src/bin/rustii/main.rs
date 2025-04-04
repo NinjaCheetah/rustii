@@ -3,13 +3,13 @@
 //
 // Base for the rustii CLI that handles argument parsing and directs execution to the proper module.
 
+mod archive;
 mod title;
 mod filetypes;
 mod info;
 
 use anyhow::Result;
 use clap::{Subcommand, Parser};
-use title::{wad, fakesign};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -21,11 +21,6 @@ struct Cli {
 #[derive(Subcommand)]
 #[command(arg_required_else_help = true)]
 enum Commands {
-    /// Pack/unpack/edit a WAD file
-    Wad {
-        #[command(subcommand)]
-        command: Option<wad::Commands>,
-    },
     /// Fakesign a TMD, Ticket, or WAD (trucha bug)
     Fakesign {
         /// The path to a TMD, Ticket, or WAD
@@ -38,34 +33,53 @@ enum Commands {
     Info {
         /// The path to a TMD, Ticket, or WAD
         input: String,
-    }
+    },
+    /// Compress/decompress data using LZ77 compression
+    Lz77 {
+        #[command(subcommand)]
+        command: archive::lz77::Commands
+    },
+    /// Pack/unpack/edit a WAD file
+    Wad {
+        #[command(subcommand)]
+        command: title::wad::Commands,
+    },
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     
     match &cli.command {
-        Some(Commands::Wad { command }) => {
-            match command {
-                Some(wad::Commands::Convert { input, target, output }) => {
-                    wad::convert_wad(input, target, output)?
-                },
-                Some(wad::Commands::Pack { input, output}) => {
-                    wad::pack_wad(input, output)?
-                },
-                Some(wad::Commands::Unpack { input, output }) => {
-                    wad::unpack_wad(input, output)?
-                },
-                &None => { /* This is for me handled by clap */}
-            }
-        },
         Some(Commands::Fakesign { input, output }) => {
-            fakesign::fakesign(input, output)?
+            title::fakesign::fakesign(input, output)?
+        },
+        Some(Commands::Lz77 { command }) => {
+            match command {
+                archive::lz77::Commands::Compress { input, output } => {
+                    archive::lz77::compress_lz77(input, output)?
+                },
+                archive::lz77::Commands::Decompress { input, output } => {
+                    archive::lz77::decompress_lz77(input, output)?
+                }
+            }
         },
         Some(Commands::Info { input }) => {
             info::info(input)?
-        }
-        None => {}
+        },
+        Some(Commands::Wad { command }) => {
+            match command {
+                title::wad::Commands::Convert { input, target, output } => {
+                    title::wad::convert_wad(input, target, output)?
+                },
+                title::wad::Commands::Pack { input, output} => {
+                    title::wad::pack_wad(input, output)?
+                },
+                title::wad::Commands::Unpack { input, output } => {
+                    title::wad::unpack_wad(input, output)?
+                }
+            }
+        },
+        None => { /* Clap handles no passed command by itself */}
     }
     Ok(())
 }
