@@ -21,6 +21,11 @@ struct Cli {
 #[derive(Subcommand)]
 #[command(arg_required_else_help = true)]
 enum Commands {
+    /// Decompress data using ASH compression
+    Ash {
+        #[command(subcommand)]
+        command: archive::ash::Commands,
+    },
     /// Fakesign a TMD, Ticket, or WAD (trucha bug)
     Fakesign {
         /// The path to a TMD, Ticket, or WAD
@@ -50,6 +55,16 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     
     match &cli.command {
+        Some(Commands::Ash { command }) => {
+            match command {
+                archive::ash::Commands::Compress { input, output } => {
+                    archive::ash::compress_ash(input, output)?
+                },
+                archive::ash::Commands::Decompress { input, output } => {
+                    archive::ash::decompress_ash(input, output)?
+                }
+            }
+        }
         Some(Commands::Fakesign { input, output }) => {
             title::fakesign::fakesign(input, output)?
         },

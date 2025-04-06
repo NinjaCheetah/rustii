@@ -12,7 +12,7 @@ use rustii::archive::lz77;
 #[derive(Subcommand)]
 #[command(arg_required_else_help = true)]
 pub enum Commands {
-    /// Compress a file with LZ77 compression (NOT IMPLEMENTED)
+    /// Compress a file with LZ77 compression
     Compress {
         /// The path to the file to compress
         input: String,
@@ -40,9 +40,10 @@ pub fn compress_lz77(input: &str, output: &Option<String>) -> Result<()> {
     let out_path = if output.is_some() {
         PathBuf::from(output.clone().unwrap())
     } else {
-        PathBuf::from(in_path).with_extension("lz77")
+        PathBuf::from(in_path).with_extension(format!("{}.lz77", in_path.extension().unwrap_or("".as_ref()).to_str().unwrap()))
     };
-    fs::write(out_path, compressed)?;
+    fs::write(out_path.clone(), compressed)?;
+    println!("Successfully compressed file to \"{}\"!", out_path.display());
     Ok(())
 }
 
@@ -56,8 +57,9 @@ pub fn decompress_lz77(input: &str, output: &Option<String>) -> Result<()> {
     let out_path = if output.is_some() {
         PathBuf::from(output.clone().unwrap())
     } else {
-        PathBuf::from(in_path).with_extension("out")
+        PathBuf::from(in_path).with_extension(format!("{}.out", in_path.extension().unwrap_or("".as_ref()).to_str().unwrap()))
     };
-    fs::write(out_path, decompressed)?;
+    fs::write(out_path.clone(), decompressed)?;
+    println!("Successfully decompressed LZ77 file to \"{}\"!", out_path.display());
     Ok(())
 }

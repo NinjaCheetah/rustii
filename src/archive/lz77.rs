@@ -135,7 +135,7 @@ pub fn compress_lz77(data: &[u8]) -> Result<Vec<u8>, LZ77Error> {
     while src_pos < data.len() {
         let mut flag = 0;
         let flag_pos = buf.position();
-        buf.write_u8(b'\x00')?;  // Reserve a byte for the chunk head.
+        buf.write_u8(b'\x00')?;  // Reserve a byte for the flag.
         let mut i = 0;
         while i < 8 && src_pos < data.len() {
             let current_node = nodes[src_pos].clone();

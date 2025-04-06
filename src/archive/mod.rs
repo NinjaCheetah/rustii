@@ -3,5 +3,6 @@
 //
 // Root for all archive-related modules.
 
+pub mod ash;
 pub mod lz77;
 pub mod u8;
