@@ -6,6 +6,7 @@
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use sha1::{Sha1, Digest};
 use thiserror::Error;
+use crate::title::content::ContentError::MissingContents;
 use crate::title::tmd::ContentRecord;
 use crate::title::crypto;
 
@@ -13,6 +14,8 @@ use crate::title::crypto;
 pub enum ContentError {
     #[error("requested index {index} is out of range (must not exceed {max})")]
     IndexOutOfRange { index: usize, max: usize },
+    #[error("expected {required} contents based on content records but found {found}")]
+    MissingContents { required: usize, found: usize },
     #[error("content with requested Content ID {0} could not be found")]
     CIDNotFound(u32),
     #[error("content's hash did not match the expected value (was {hash}, expected {expected})")]
@@ -70,6 +73,19 @@ impl ContentRegion {
             contents,
         })
     }
+
+    /// Creates a ContentRegion instance that can be used to parse and edit content stored in a 
+    /// digital Wii title from a vector of contents and the ContentRecords from a TMD.
+    pub fn from_contents(contents: Vec<Vec<u8>>, content_records: Vec<ContentRecord>) -> Result<Self, ContentError> {
+        if contents.len() != content_records.len() {
+            return Err(MissingContents { required: content_records.len(), found: contents.len()});
+        }
+        let mut content_region = Self::new(content_records)?;
+        for i in 0..contents.len() {
+            content_region.load_enc_content(&contents[i], content_region.content_records[i].index as usize)?;
+        }
+        Ok(content_region)
+    }
     
     /// Creates a ContentRegion instance from the ContentRecords of a TMD that contains no actual
     /// content. This can be used to load existing content from files.
@@ -77,9 +93,8 @@ impl ContentRegion {
         let content_region_size: u64 = content_records.iter().map(|x| (x.content_size + 63) & !63).sum();
         let content_region_size = content_region_size as u32;
         let num_contents = content_records.len() as u16;
-        let content_start_offsets: Vec<u64> = Vec::new();
-        let mut contents: Vec<Vec<u8>> = Vec::new();
-        contents.resize(num_contents as usize, Vec::new());
+        let content_start_offsets: Vec<u64> = vec![0; num_contents as usize];
+        let contents: Vec<Vec<u8>> = vec![Vec::new(); num_contents as usize];
         Ok(ContentRegion {
             content_records,
             content_region_size,
@@ -142,6 +157,16 @@ impl ContentRegion {
         } else {
             Err(ContentError::CIDNotFound(cid))
         }
+    }
+
+    /// Loads existing content into the specified index of a ContentRegion instance. This content 
+    /// must be encrypted.
+    pub fn load_enc_content(&mut self, content: &[u8], index: usize) -> Result<(), ContentError> {
+        if index >= self.content_records.len() {
+            return Err(ContentError::IndexOutOfRange { index, max: self.content_records.len() - 1 });
+        }
+        self.contents[index] = Vec::from(content);
+        Ok(())
     }
     
     /// Loads existing content into the specified index of a ContentRegion instance. This content 

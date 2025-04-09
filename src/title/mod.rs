@@ -7,6 +7,7 @@ pub mod cert;
 pub mod commonkeys;
 pub mod content;
 pub mod crypto;
+pub mod nus;
 pub mod ticket;
 pub mod tmd;
 pub mod versions;
@@ -52,15 +53,37 @@ impl Title {
         let ticket = ticket::Ticket::from_bytes(&wad.ticket()).map_err(TitleError::Ticket)?;
         let tmd = tmd::TMD::from_bytes(&wad.tmd()).map_err(TitleError::TMD)?;
         let content = content::ContentRegion::from_bytes(&wad.content(), tmd.content_records.clone()).map_err(TitleError::Content)?;
-        let title = Title {
+        Ok(Title {
             cert_chain,
             crl: wad.crl(),
             ticket,
             tmd,
             content,
             meta: wad.meta(),
+        })
+    }
+    
+    /// Creates a new Title instance from all of its individual components.
+    pub fn from_parts(cert_chain: cert::CertificateChain, crl: Option<&[u8]>, ticket: ticket::Ticket, tmd: tmd::TMD,
+                      content: content::ContentRegion, meta: Option<&[u8]>) -> Result<Title, TitleError> {
+        // Create empty vecs for the CRL and meta areas if we weren't supplied with any, as they're
+        // optional components.
+        let crl = match crl {
+            Some(crl) => crl.to_vec(),
+            None => Vec::new()
         };
-        Ok(title)
+        let meta = match meta {
+            Some(meta) => meta.to_vec(),
+            None => Vec::new()
+        };
+        Ok(Title {
+            cert_chain,
+            crl,
+            ticket,
+            tmd,
+            content,
+            meta
+        })
     }
     
     /// Converts a Title instance into a WAD, which can be used to export the Title back to a file.

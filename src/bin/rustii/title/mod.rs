@@ -2,4 +2,5 @@
 // https://github.com/NinjaCheetah/rustii
 
 pub mod fakesign;
+pub mod nus;
 pub mod wad;

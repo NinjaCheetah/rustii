@@ -44,6 +44,14 @@ enum Commands {
         #[command(subcommand)]
         command: archive::lz77::Commands
     },
+    Nus {
+        #[command(subcommand)]
+        command: title::nus::Commands
+    },
+    U8 {
+        #[command(subcommand)]
+        command: archive::u8::Commands
+    },
     /// Pack/unpack/edit a WAD file
     Wad {
         #[command(subcommand)]
@@ -68,6 +76,9 @@ fn main() -> Result<()> {
         Some(Commands::Fakesign { input, output }) => {
             title::fakesign::fakesign(input, output)?
         },
+        Some(Commands::Info { input }) => {
+            info::info(input)?
+        },
         Some(Commands::Lz77 { command }) => {
             match command {
                 archive::lz77::Commands::Compress { input, output } => {
@@ -78,8 +89,28 @@ fn main() -> Result<()> {
                 }
             }
         },
-        Some(Commands::Info { input }) => {
-            info::info(input)?
+        Some(Commands::Nus { command }) => {
+            match command {
+                title::nus::Commands::Ticket { tid, output } => {
+                    title::nus::download_ticket(tid, output)?  
+                },
+                title::nus::Commands::Title { tid, version, output} => {
+                    title::nus::download_title(tid, version, output)?
+                }
+                title::nus::Commands::Tmd { tid, version, output} => {
+                    title::nus::download_tmd(tid, version, output)?
+                }
+            }
+        }
+        Some(Commands::U8 { command }) => {
+            match command {
+                archive::u8::Commands::Pack { input, output } => {
+                    archive::u8::pack_u8_archive(input, output)?
+                },
+                archive::u8::Commands::Unpack { input, output } => {
+                    archive::u8::unpack_u8_archive(input, output)?
+                }
+            }
         },
         Some(Commands::Wad { command }) => {
             match command {

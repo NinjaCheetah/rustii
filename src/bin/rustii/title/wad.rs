@@ -138,7 +138,7 @@ pub fn convert_wad(input: &str, target: &ConvertTargets, output: &Option<String>
     }
     title.ticket.title_key = title_key_new;
     title.fakesign()?;
-    fs::write(out_path.clone(), title.to_wad()?.to_bytes()?)?;
+    fs::write(&out_path, title.to_wad()?.to_bytes()?)?;
     println!("Successfully converted {} WAD to {} WAD \"{}\"!", source, target, out_path.file_name().unwrap().to_str().unwrap());
     Ok(())
 }
@@ -205,7 +205,7 @@ pub fn pack_wad(input: &str, output: &str) -> Result<()> {
             out_path.set_extension("wad");
         }
     }
-    fs::write(out_path.clone(), wad.to_bytes()?).with_context(|| format!("Could not open output file \"{}\" for writing.", out_path.display()))?;
+    fs::write(&out_path, wad.to_bytes()?).with_context(|| format!("Could not open output file \"{}\" for writing.", out_path.display()))?;
     println!("WAD file packed!");
     Ok(())
 }

@@ -50,11 +50,11 @@ impl fmt::Display for TitleType {
 
 #[derive(Debug, Clone)]
 pub enum ContentType {
-    Normal,
-    Development,
-    HashTree,
-    DLC,
-    Shared,
+    Normal = 1,
+    Development = 2,
+    HashTree = 3,
+    DLC = 16385,
+    Shared = 32769,
 }
 
 impl fmt::Display for ContentType {
@@ -70,8 +70,8 @@ impl fmt::Display for ContentType {
 }
 
 pub enum AccessRight {
-    AHB,
-    DVDVideo,
+    AHB = 0,
+    DVDVideo = 1,
 }
 
 #[derive(Debug, Clone)]
@@ -332,10 +332,7 @@ impl TMD {
 
     /// Gets whether a specified access right is enabled in a TMD.
     pub fn check_access_right(&self, right: AccessRight) -> bool {
-        match right {
-            AccessRight::AHB => (self.access_rights & (1 << 0)) != 0,
-            AccessRight::DVDVideo => (self.access_rights & (1 << 1)) != 0,
-        }
+        self.access_rights & (1 << right as u8) != 0
     }
 
     /// Gets the name of the certificate used to sign a TMD as a string.
