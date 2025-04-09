@@ -93,6 +93,9 @@ fn main() -> Result<()> {
         },
         Some(Commands::Nus { command }) => {
             match command {
+                title::nus::Commands::Content { tid, cid, version, output, decrypt} => {
+                    title::nus::download_content(tid, cid, version, output, decrypt)?  
+                },
                 title::nus::Commands::Ticket { tid, output } => {
                     title::nus::download_ticket(tid, output)?  
                 },

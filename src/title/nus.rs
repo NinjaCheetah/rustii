@@ -10,8 +10,6 @@ use thiserror::Error;
 use crate::title::{cert, tmd, ticket, content};
 use crate::title;
 
-use sha1::{Sha1, Digest};
-
 const WII_NUS_ENDPOINT: &str = "http://nus.cdn.shop.wii.com/ccs/download/";
 const WII_U_NUS_ENDPOINT: &str = "http://ccs.cdn.wup.shop.nintendo.net/ccs/download/";
 

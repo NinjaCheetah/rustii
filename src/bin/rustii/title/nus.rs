@@ -7,12 +7,29 @@ use std::{str, fs};
 use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 use clap::{Subcommand, Args};
-use rustii::title::{cert, content, nus, ticket, tmd};
+use sha1::{Sha1, Digest};
+use rustii::title::{cert, content, crypto, nus, ticket, tmd};
 use rustii::title;
 
 #[derive(Subcommand)]
 #[command(arg_required_else_help = true)]
 pub enum Commands {
+    /// Download specific content from the NUS
+    Content {
+        /// The Title ID that the content belongs to
+        tid: String,
+        /// The Content ID of the content (in hex format, like 000000xx)
+        cid: String,
+        /// The title version that the content belongs to (only required for decryption)
+        #[arg(short, long)]
+        version: Option<String>,
+        /// An optional content file name; defaults to <cid>(.app)
+        #[arg(short, long)]
+        output: Option<String>,
+        /// Decrypt the content
+        #[arg(short, long)]
+        decrypt: bool,
+    },
     /// Download a Ticket from the NUS
     Ticket {
         /// The Title ID that the Ticket is for
@@ -54,6 +71,65 @@ pub struct TitleOutputType {
     /// Download the Title to a WAD file
     #[arg(short, long)]
     wad: Option<String>,
+}
+
+pub fn download_content(tid: &str, cid: &str, version: &Option<String>, output: &Option<String>, decrypt: &bool) -> Result<()> {
+    println!("Downloading content with Content ID {cid}...");
+    if tid.len() != 16 {
+        bail!("The specified Title ID is invalid!");
+    }
+    let cid = u32::from_str_radix(cid, 16).with_context(|| "The specified Content ID is invalid!")?;
+    let tid: [u8; 8] = hex::decode(tid)?.try_into().unwrap();
+    let content = nus::download_content(tid, cid, true).with_context(|| "Content data could not be downloaded.")?;
+    let out_path = if output.is_some() {
+        PathBuf::from(output.clone().unwrap())
+    } else if *decrypt {
+        PathBuf::from(format!("{:08X}.app", cid))
+    } else {
+        PathBuf::from(format!("{:08X}", cid))
+    };
+    if *decrypt {
+        // We need the version to get the correct TMD because the content's index is the IV for
+        // decryption. A Ticket also needs to be available, of course.
+        let version: u16 = if version.is_some() {
+            version.clone().unwrap().parse().with_context(|| "The specified Title version must be a valid integer!")?
+        } else {
+            bail!("You must specify the title version that the requested content belongs to for decryption!");
+        };
+        let tmd_res = &nus::download_tmd(tid, Some(version), true);
+        println!(" - Downloading TMD...");
+        let tmd = match tmd_res {
+            Ok(tmd) => tmd::TMD::from_bytes(tmd)?,
+            Err(_) => bail!("No TMD could be found for the specified version! Check the version and try again.")
+        };
+        println!(" - Downloading Ticket...");
+        let tik_res = &nus::download_ticket(tid, true);
+        let tik = match tik_res {
+            Ok(tik) => ticket::Ticket::from_bytes(tik)?,
+            Err(_) => bail!("No Ticket is available for this title! The content cannot be decrypted.")
+        };
+        println!(" - Decrypting content...");
+        let (content_hash, content_size, content_index) = tmd.content_records.iter()
+            .find(|record| record.content_id == cid)
+            .map(|record| (record.content_hash, record.content_size, record.index))
+            .with_context(|| "No matching content record could be found. Please make sure the requested content is from the specified title version.")?;
+        let mut content_dec = crypto::decrypt_content(&content, tik.dec_title_key(), content_index);
+        content_dec.resize(content_size as usize, 0);
+        // Verify the content's hash before saving it.
+        let mut hasher = Sha1::new();
+        hasher.update(&content_dec);
+        let result = hasher.finalize();
+        if result[..] != content_hash {
+            bail!("The content's hash did not match the expected value. (Hash was {}, but the expected hash is {}.)",
+                hex::encode(result), hex::encode(content_hash));
+        }
+        fs::write(&out_path, content_dec).with_context(|| format!("Failed to open content file \"{}\" for writing.", out_path.display()))?;
+    } else {
+        // If we're not decrypting, just write the file out and call it a day.
+        fs::write(&out_path, content).with_context(|| format!("Failed to open content file \"{}\" for writing.", out_path.display()))?
+    }
+    println!("Successfully downloaded content with Content ID {:08X} to file \"{}\"!", cid, out_path.display());
+    Ok(())
 }
 
 pub fn download_ticket(tid: &str, output: &Option<String>) -> Result<()> {
