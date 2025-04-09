@@ -19,18 +19,18 @@ pub enum U8Error {
 }
 
 #[derive(Clone, Debug)]
-struct U8Node {
-    node_type: u8,
-    name_offset: u32, // This is really type u24, so the most significant byte will be ignored.
-    data_offset: u32,
-    size: u32,
+pub struct U8Node {
+    pub node_type: u8,
+    pub name_offset: u32, // This is really type u24, so the most significant byte will be ignored.
+    pub data_offset: u32,
+    pub size: u32,
 }
 
 #[derive(Debug)]
 pub struct U8Archive {
-    u8_nodes: Vec<U8Node>,
-    file_names: Vec<String>,
-    file_data: Vec<Vec<u8>>,
+    pub u8_nodes: Vec<U8Node>,
+    pub file_names: Vec<String>,
+    pub file_data: Vec<Vec<u8>>,
     root_node_offset: u32,
     header_size: u32,
     data_offset: u32,
