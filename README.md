@@ -9,15 +9,25 @@ rustii is a library and command line tool written in Rust for handling the vario
 
 I'm still very new to Rust, so pardon any messy code or confusing API decisions you may find. libWiiPy started off like that, too.
 
-### What's Included
-- Structs for TMDs and Tickets that can be created from binary data
-- Simple Title Key encryption/decryption
-- Content encryption/decryption
-- WAD parsing (allowing for packing/unpacking)
+### What's Included (Library-Side)
+- Structs for parsing and editing WADs, TMDs, Tickets, and Certificate Chains
+- Title Key and content encryption/decryption
+- High-level Title struct (offering the same utility as libWiiPy's `Title`)
+- LZ77 compression/decompression
+- ASH decompression
+- NUS TMD/Ticket/certificate chain/content downloading
 - A basic CLI that uses the above features to allow for packing/unpacking WADs
+- The very basics of U8 archive handling (not really functional yet though)
 
-### What's Not Included
-- Basically anything else. Any other features present in libWiiPy not listed here either do not yet exist, or are in an experimental state.
+### What's Included (CLI-Side)
+- WAD packing/unpacking/converting
+- NUS TMD/Ticket/Title downloading
+- LZ77 compression/decompression
+- ASH decompression
+- Fakesigning command for WADs/TMDs/Tickets
+- Info command for WADs/TMDs/Tickets
+
+To see specific usage information, check `rustii --help` and `rustii <command> --help`.
 
 ## Building
 rustii is a standard Rust package. You'll need to have [Rust installed](https://www.rust-lang.org/learn/get-started), and then you can simply run:

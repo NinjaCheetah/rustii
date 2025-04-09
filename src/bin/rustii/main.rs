@@ -44,10 +44,12 @@ enum Commands {
         #[command(subcommand)]
         command: archive::lz77::Commands
     },
+    /// Download data from the NUS
     Nus {
         #[command(subcommand)]
         command: title::nus::Commands
     },
+    /// Pack/unpack a U8 archive
     U8 {
         #[command(subcommand)]
         command: archive::u8::Commands
