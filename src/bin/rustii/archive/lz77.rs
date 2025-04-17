@@ -57,7 +57,7 @@ pub fn decompress_lz77(input: &str, output: &Option<String>) -> Result<()> {
     let out_path = if output.is_some() {
         PathBuf::from(output.clone().unwrap())
     } else {
-        PathBuf::from(in_path).with_extension(format!("{}.out", in_path.extension().unwrap_or("".as_ref()).to_str().unwrap()))
+        PathBuf::from(in_path.file_name().unwrap()).with_extension(format!("{}.out", in_path.extension().unwrap_or("".as_ref()).to_str().unwrap()))
     };
     fs::write(out_path.clone(), decompressed)?;
     println!("Successfully decompressed LZ77 file to \"{}\"!", out_path.display());
