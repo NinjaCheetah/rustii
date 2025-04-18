@@ -250,6 +250,12 @@ impl U8Archive {
         })
     }
     
+    pub fn from_tree(node_tree: &Rc<RefCell<U8Directory>>) -> Result<Self, U8Error> {
+        Ok(U8Archive {
+            node_tree: node_tree.clone(),
+        })
+    }
+    
     fn pack_dir_recursive(file_names: &mut Vec<String>, file_data: &mut Vec<Vec<u8>>, u8_nodes: &mut Vec<U8Node>, current_node: &Rc<RefCell<U8Directory>>) {
         // For files, read their data into the file data list, add their name into the file name 
         // list, then calculate the offset for their file name and create a new U8Node() for them. 

@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
+use glob::glob;
 use rustii::archive::u8;
 
 #[derive(Subcommand)]
@@ -30,8 +31,41 @@ pub enum Commands {
     }
 }
 
-pub fn pack_u8_archive(_input: &str, _output: &str) -> Result<()> {
-    todo!();
+fn pack_dir_recursive(dir: &Rc<RefCell<u8::U8Directory>>, in_path: PathBuf) -> Result<()> {
+    let mut files = Vec::new();
+    let mut dirs = Vec::new();
+    for entry in glob(&format!("{}/*", in_path.display()))?.flatten() {
+        match fs::metadata(&entry) {
+            Ok(meta) if meta.is_file() => files.push(entry),
+            Ok(meta) if meta.is_dir() => dirs.push(entry),
+            _ => {} // Anything that isn't a normal file/directory just gets ignored.
+        }
+    }
+    for file in files {
+        let node = u8::U8File::new(file.file_name().unwrap().to_str().unwrap().to_owned(), fs::read(file)?);
+        u8::U8Directory::add_file(dir, node);
+    }
+    for child_dir in dirs {
+        let node = u8::U8Directory::new(child_dir.file_name().unwrap().to_str().unwrap().to_owned());
+        u8::U8Directory::add_dir(dir, node);
+        let dir = u8::U8Directory::get_child_dir(dir, child_dir.file_name().unwrap().to_str().unwrap()).unwrap();
+        pack_dir_recursive(&dir, child_dir)?;
+    }
+    Ok(())
+}
+
+pub fn pack_u8_archive(input: &str, output: &str) -> Result<()> {
+    let in_path = Path::new(input);
+    if !in_path.exists() {
+        bail!("Source directory \"{}\" could not be found.", in_path.display());
+    }
+    let out_path = PathBuf::from(output);
+    let node_tree = u8::U8Directory::new(String::new());
+    pack_dir_recursive(&node_tree, in_path.to_path_buf()).with_context(|| "A U8 archive could not be packed.")?;
+    let u8_archive = u8::U8Archive::from_tree(&node_tree).with_context(|| "An unknown error occurred while creating a U8 archive from the data.")?;
+    fs::write(&out_path, &u8_archive.to_bytes()?).with_context(|| format!("Could not open output file \"{}\" for writing.", out_path.display()))?;
+    println!("Successfully packed directory \"{}\" into U8 archive \"{}\"!", in_path.display(), out_path.display());
+    Ok(())
 }
 
 fn unpack_dir_recursive(dir: &Rc<RefCell<u8::U8Directory>>, out_path: PathBuf) -> Result<()> {
@@ -51,7 +85,7 @@ fn unpack_dir_recursive(dir: &Rc<RefCell<u8::U8Directory>>, out_path: PathBuf) -
 pub fn unpack_u8_archive(input: &str, output: &str) -> Result<()> {
     let in_path = Path::new(input);
     if !in_path.exists() {
-        bail!("Source U8 archive \"{}\" could not be found.", input);
+        bail!("Source U8 archive \"{}\" could not be found.", in_path.display());
     }
     let out_path = PathBuf::from(output);
     if out_path.exists() {
