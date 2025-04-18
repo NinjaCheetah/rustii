@@ -4,7 +4,7 @@
 // Common code for identifying Wii file types.
 
 use std::{str, fs::File};
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use regex::RegexBuilder;
 
@@ -13,7 +13,8 @@ use regex::RegexBuilder;
 pub enum WiiFileType {
     Wad,
     Tmd,
-    Ticket
+    Ticket,
+    U8,
 }
 
 pub fn identify_file_type(input: &str) -> Option<WiiFileType> {
@@ -35,13 +36,29 @@ pub fn identify_file_type(input: &str) -> Option<WiiFileType> {
     if input.extension().is_some_and(|f| f.eq_ignore_ascii_case("wad")) {
         return Some(WiiFileType::Wad);
     }
-    // Advanced WAD detection, where we read and compare the first 8 bytes (only if the path exists.)
+    // == U8 ==
+    if input.extension().is_some_and(|f| f.eq_ignore_ascii_case("arc")) ||
+        input.extension().is_some_and(|f| f.eq_ignore_ascii_case("app")) {
+        return Some(WiiFileType::U8);
+    }
+    
+    // == Advanced ==
+    // These require reading the magic number of the file, so we only try this after everything
+    // else has been tried. These are separated from the other methods of detecting these types so
+    // that we only have to open the file for reading once.
     if input.exists() {
         let mut f = File::open(input).unwrap();
+        // We need to read more bytes for WADs since they don't have a proper magic number.
         let mut magic_number = vec![0u8; 8];
         f.read_exact(&mut magic_number).unwrap();
         if magic_number == b"\x00\x00\x00\x20\x49\x73\x00\x00" || magic_number == b"\x00\x00\x00\x20\x69\x62\x00\x00" {
             return Some(WiiFileType::Wad);
+        }
+        let mut magic_number = vec![0u8; 4];
+        f.seek(SeekFrom::Start(0)).unwrap();
+        f.read_exact(&mut magic_number).unwrap();
+        if magic_number == b"\x55\xAA\x38\x2D" {
+            return Some(WiiFileType::U8);
         }
     }
     

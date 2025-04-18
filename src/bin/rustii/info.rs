@@ -4,8 +4,11 @@
 // Code for the info command in the rustii CLI.
 
 use std::{str, fs};
+use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
 use anyhow::{bail, Context, Result};
+use rustii::archive::u8;
 use rustii::{title, title::cert, title::tmd, title::ticket, title::wad, title::versions};
 use crate::filetypes::{WiiFileType, identify_file_type};
 
@@ -240,6 +243,35 @@ fn print_wad_info(wad: wad::WAD) -> Result<()> {
     Ok(())
 }
 
+fn print_full_tree(dir: &Rc<RefCell<u8::U8Directory>>, indent: usize) {
+    let prefix = "  ".repeat(indent);
+    let dir_name = if !dir.borrow().name.is_empty() {
+        &dir.borrow().name
+    } else {
+        &String::from("root")
+    };
+    println!("{}D {}", prefix, dir_name);
+
+    // Print subdirectories
+    for subdir in &dir.borrow().dirs {
+        print_full_tree(subdir, indent + 1);
+    }
+
+    // Print files
+    for file in &dir.borrow().files {
+        let file_name = &file.borrow().name;
+        println!("{}  F {}", prefix, file_name);
+    }
+}
+
+fn print_u8_info(u8_archive: u8::U8Archive) -> Result<()> {
+    println!("U8 Archive Info");
+    println!("  Node Count: {}", u8_archive.node_tree.borrow().count());
+    println!("  Archive Data:");
+    print_full_tree(&u8_archive.node_tree, 2);
+    Ok(())
+}
+
 pub fn info(input: &str) -> Result<()> {
     let in_path = Path::new(input);
     if !in_path.exists() {
@@ -247,17 +279,21 @@ pub fn info(input: &str) -> Result<()> {
     }
     match identify_file_type(input) {
         Some(WiiFileType::Tmd) => {
-            let tmd = tmd::TMD::from_bytes(fs::read(in_path)?.as_slice()).with_context(|| "The provided TMD file could not be parsed, and is likely invalid.")?;
+            let tmd = tmd::TMD::from_bytes(&fs::read(in_path)?).with_context(|| "The provided TMD file could not be parsed, and is likely invalid.")?;
             print_tmd_info(tmd, None)?;
         },
         Some(WiiFileType::Ticket) => {
-            let ticket = ticket::Ticket::from_bytes(fs::read(in_path)?.as_slice()).with_context(|| "The provided Ticket file could not be parsed, and is likely invalid.")?;
+            let ticket = ticket::Ticket::from_bytes(&fs::read(in_path)?).with_context(|| "The provided Ticket file could not be parsed, and is likely invalid.")?;
             print_ticket_info(ticket, None)?;
         },
         Some(WiiFileType::Wad) => {
-            let wad = wad::WAD::from_bytes(fs::read(in_path)?.as_slice()).with_context(|| "The provided WAD file could not be parsed, and is likely invalid.")?;
+            let wad = wad::WAD::from_bytes(&fs::read(in_path)?).with_context(|| "The provided WAD file could not be parsed, and is likely invalid.")?;
             print_wad_info(wad)?;
         },
+        Some(WiiFileType::U8) => {
+            let u8_archive = u8::U8Archive::from_bytes(&fs::read(in_path)?).with_context(|| "The provided U8 archive could not be parsed, and is likely invalid.")?;
+            print_u8_info(u8_archive)?;
+        }
         None => {
             bail!("Information cannot be displayed for this file type.");
         }

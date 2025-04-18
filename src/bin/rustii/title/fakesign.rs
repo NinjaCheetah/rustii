@@ -57,7 +57,7 @@ pub fn fakesign(input: &str, output: &Option<String>) -> Result<()> {
             fs::write(out_path, ticket.to_bytes()?).with_context(|| "Could not open output file for writing.")?;
             println!("Ticket fakesigned!");
         },
-        None => {
+        _ => {
             bail!("You can only fakesign TMDs, Tickets, and WADs!");
         }
     }

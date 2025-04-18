@@ -345,19 +345,3 @@ impl U8Archive {
         Ok(buf)
     }
 }
-
-// pub fn print_full_tree(dir: &Rc<RefCell<U8Directory>>, indent: usize) {
-//     let prefix = "  ".repeat(indent);
-//     println!("{}D {}", prefix, dir.borrow().name);
-// 
-//     // Print subdirectories
-//     for subdir in &dir.borrow().dirs {
-//         print_full_tree(subdir, indent + 1);
-//     }
-// 
-//     // Print files
-//     for file in &dir.borrow().files {
-//         let file_name = &file.borrow().name;
-//         println!("{}  F {}", prefix, file_name);
-//     }
-// }
