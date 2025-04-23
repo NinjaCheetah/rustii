@@ -156,7 +156,7 @@ pub fn pack_wad(input: &str, output: &str) -> Result<()> {
     } else if tmd_files.len() > 1 {
         bail!("More than one TMD file found in the source directory.");
     }
-    let tmd = tmd::TMD::from_bytes(&fs::read(&tmd_files[0]).with_context(|| "Could not open TMD file for reading.")?)
+    let mut tmd = tmd::TMD::from_bytes(&fs::read(&tmd_files[0]).with_context(|| "Could not open TMD file for reading.")?)
         .with_context(|| "The provided TMD file appears to be invalid.")?;
     // Read Ticket file (only accept one file).
     let ticket_files: Vec<PathBuf> = glob(&format!("{}/*.tik", in_path.display()))?
@@ -189,9 +189,11 @@ pub fn pack_wad(input: &str, output: &str) -> Result<()> {
     let mut content_region = content::ContentRegion::new(tmd.content_records.clone())?;
     for content in tmd.content_records.clone() {
         let data = fs::read(format!("{}/{:08X}.app", in_path.display(), content.index)).with_context(|| format!("Could not open content file \"{:08X}.app\" for reading.", content.index))?;
-        content_region.load_content(&data, content.index as usize, tik.dec_title_key())
-            .expect("failed to load content into ContentRegion, this is probably because content was modified which isn't supported yet");
+        content_region.set_content(&data, content.index as usize, None, None, tik.dec_title_key())
+            .with_context(|| "Failed to load content into the ContentRegion.")?;
     }
+    // Ensure that the TMD is modified with our potentially updated content records.
+    tmd.content_records = content_region.content_records.clone();
     let wad = wad::WAD::from_parts(&cert_chain, &[], &tik, &tmd, &content_region, &footer).with_context(|| "An unknown error occurred while building a WAD from the input files.")?;
     // Write out WAD file.
     let mut out_path = PathBuf::from(output);

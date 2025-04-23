@@ -131,6 +131,15 @@ impl Title {
         let content = self.content.get_content_by_cid(cid, self.ticket.dec_title_key())?;
         Ok(content)
     }
+
+    /// Sets the content at the specified index to the provided decrypted content. This content will
+    /// have its size and hash saved into the matching record. Optionally, a new Content ID or
+    /// content type can be provided, with the existing values being preserved by default.
+    pub fn set_content(&mut self, content: &[u8], index: usize) -> Result<(), TitleError> {
+        self.content.set_content(content, index, None, None, self.ticket.dec_title_key())?;
+        self.tmd.content_records = self.content.content_records.clone();
+        Ok(())
+    }
     
     /// Gets the installed size of the title, in bytes. Use the optional parameter "absolute" to set
     /// whether shared content should be included in this total or not.
@@ -197,7 +206,7 @@ impl Title {
         self.tmd = tmd;
     }
     
-    pub fn set_content(&mut self, content: content::ContentRegion) {
+    pub fn set_content_region(&mut self, content: content::ContentRegion) {
         self.content = content;
     }
     

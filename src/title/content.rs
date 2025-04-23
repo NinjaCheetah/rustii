@@ -7,8 +7,9 @@ use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use sha1::{Sha1, Digest};
 use thiserror::Error;
 use crate::title::content::ContentError::MissingContents;
-use crate::title::tmd::ContentRecord;
+use crate::title::tmd::{ContentRecord, ContentType};
 use crate::title::crypto;
+use crate::title::crypto::encrypt_content;
 
 #[derive(Debug, Error)]
 pub enum ContentError {
@@ -49,13 +50,7 @@ impl ContentRegion {
                 }
                 Some(*offset)
             })).take(content_records.len()).collect(); // Trims the extra final entry.
-        let total_content_size: u64 = content_records.iter().map(|x| (x.content_size + 63) & !63).sum();
         // Parse the content blob and create a vector of vectors from it.
-        // Check that the content blob matches the total size of all the contents in the records.
-        if content_region_size != total_content_size as u32 {
-            println!("Content region size mismatch.");
-            //return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid content blob for content records"));
-        }
         let mut contents: Vec<Vec<u8>> = Vec::with_capacity(num_contents as usize);
         let mut buf = Cursor::new(data);
         for i in 0..num_contents {
@@ -165,7 +160,27 @@ impl ContentRegion {
         if index >= self.content_records.len() {
             return Err(ContentError::IndexOutOfRange { index, max: self.content_records.len() - 1 });
         }
-        self.contents[index] = Vec::from(content);
+        self.contents[index] = content.to_vec();
+        Ok(())
+    }
+    
+    /// Sets the content at the specified index to the provided encrypted content. This requires
+    /// the size and hash of the original decrypted content to be known so that the appropriate
+    /// values can be set in the corresponding content record. Optionally, a new Content ID or
+    /// content type can be provided, with the existing values being preserved by default.
+    pub fn set_enc_content(&mut self, content: &[u8], index: usize, content_size: u64, content_hash: [u8; 20], cid: Option<u32>, content_type: Option<ContentType>) -> Result<(), ContentError> {
+        if index >= self.content_records.len() {
+            return Err(ContentError::IndexOutOfRange { index, max: self.content_records.len() - 1 });
+        }
+        self.content_records[index].content_size = content_size;
+        self.content_records[index].content_hash = content_hash;
+        if cid.is_some() {
+            self.content_records[index].content_id = cid.unwrap();
+        }
+        if content_type.is_some() {
+            self.content_records[index].content_type = content_type.unwrap();
+        }
+        self.contents[index] = content.to_vec();
         Ok(())
     }
     
@@ -184,8 +199,22 @@ impl ContentRegion {
         if result[..] != self.content_records[index].content_hash {
             return Err(ContentError::BadHash { hash: hex::encode(result), expected: hex::encode(self.content_records[index].content_hash) });
         }
-        let content_enc = crypto::encrypt_content(content, title_key, self.content_records[index].index, self.content_records[index].content_size);
+        let content_enc = encrypt_content(content, title_key, self.content_records[index].index, self.content_records[index].content_size);
         self.contents[index] = content_enc;
+        Ok(())
+    }
+
+    /// Sets the content at the specified index to the provided decrypted content. This content will
+    /// have its size and hash saved into the matching record. Optionally, a new Content ID or
+    /// content type can be provided, with the existing values being preserved by default. The
+    /// Title Key will be used to encrypt this content before it is stored.
+    pub fn set_content(&mut self, content: &[u8], index: usize, cid: Option<u32>, content_type: Option<ContentType>, title_key: [u8; 16]) -> Result<(), ContentError> {
+        let content_size = content.len() as u64;
+        let mut hasher = Sha1::new();
+        hasher.update(content);
+        let content_hash: [u8; 20] = hasher.finalize().into();
+        let content_enc = encrypt_content(content, title_key, index as u16, content_size);
+        self.set_enc_content(&content_enc, index, content_size, content_hash, cid, content_type)?;
         Ok(())
     }
 }
