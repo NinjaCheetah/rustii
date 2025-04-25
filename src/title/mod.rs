@@ -135,8 +135,8 @@ impl Title {
     /// Sets the content at the specified index to the provided decrypted content. This content will
     /// have its size and hash saved into the matching record. Optionally, a new Content ID or
     /// content type can be provided, with the existing values being preserved by default.
-    pub fn set_content(&mut self, content: &[u8], index: usize) -> Result<(), TitleError> {
-        self.content.set_content(content, index, None, None, self.ticket.dec_title_key())?;
+    pub fn set_content(&mut self, content: &[u8], index: usize, cid: Option<u32>, content_type: Option<tmd::ContentType>) -> Result<(), TitleError> {
+        self.content.set_content(content, index, cid, content_type, self.ticket.dec_title_key())?;
         self.tmd.content_records = self.content.content_records.clone();
         Ok(())
     }

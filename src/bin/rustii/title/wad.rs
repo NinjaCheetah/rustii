@@ -37,6 +37,21 @@ pub enum Commands {
         input: String,
         /// The directory to extract the WAD to
         output: String
+    },
+    /// Replace existing content in a WAD file with new data
+    Set {
+        /// The path to the WAD file to modify
+        input: String,
+        /// The new WAD content
+        content: String,
+        /// An optional output path; defaults to overwriting input WAD file
+        #[arg(short, long)]
+        output: Option<String>,
+        /// An optional new type for the content, can be "Normal", "Shared", or "DLC"
+        #[arg(short, long)]
+        r#type: Option<String>,
+        #[command(flatten)]
+        identifier: ContentIdentifier,
     }
 }
 
@@ -53,6 +68,18 @@ pub struct ConvertTargets {
     /// Use the vWii key, allowing this WAD to theoretically be installed from Wii U mode if a Wii U mode WAD installer is created
     #[arg(long)]
     vwii: bool,
+}
+
+#[derive(Args)]
+#[clap(next_help_heading = "Content Identifier")]
+#[group(multiple = false, required = true)]
+pub struct ContentIdentifier {
+    /// The index of the content to replace
+    #[arg(short, long)]
+    index: Option<usize>,
+    /// The Content ID of the content to replace
+    #[arg(short, long)]
+    cid: Option<String>,
 }
 
 enum Target {
@@ -94,7 +121,7 @@ pub fn convert_wad(input: &str, target: &ConvertTargets, output: &Option<String>
             Target::Vwii => PathBuf::from(format!("{}_vWii.wad", in_path.file_stem().unwrap().to_str().unwrap())),
         }
     };
-    let mut title = title::Title::from_bytes(fs::read(in_path)?.as_slice()).with_context(|| "The provided WAD file could not be parsed, and is likely invalid.")?;
+    let mut title = title::Title::from_bytes(&fs::read(in_path)?).with_context(|| "The provided WAD file could not be parsed, and is likely invalid.")?;
     // Bail if the WAD is already using the selected encryption.
     if matches!(target, Target::Dev) && title.ticket.is_dev() {
         bail!("This is already a development WAD!");
@@ -241,5 +268,58 @@ pub fn unpack_wad(input: &str, output: &str) -> Result<()> {
         fs::write(Path::join(out_path, content_file_name), dec_content).with_context(|| format!("Failed to open content file \"{:08X}.app\" for writing.", title.content.content_records[i as usize].content_id))?;
     }
     println!("WAD file unpacked!");
+    Ok(())
+}
+
+pub fn set_wad(input: &str, content: &str, output: &Option<String>, identifier: &ContentIdentifier, ctype: &Option<String>) -> Result<()> {
+    let in_path = Path::new(input);
+    if !in_path.exists() {
+        bail!("Source WAD \"{}\" could not be found.", in_path.display());
+    }
+    let content_path = Path::new(content);
+    if !content_path.exists() {
+        bail!("New content \"{}\" could not be found.", content_path.display());
+    }
+    // Get the output name now that we know the target, if one wasn't passed.
+    let out_path = if output.is_some() {
+        PathBuf::from(output.clone().unwrap()).with_extension("wad")
+    } else {
+        in_path.to_path_buf()
+    };
+    // Load the WAD and parse the new type, if one was specified.
+    let mut title = title::Title::from_bytes(&fs::read(in_path)?).with_context(|| "The provided WAD file could not be parsed, and is likely invalid.")?;
+    let new_content = fs::read(content_path)?;
+    let mut target_type: Option<tmd::ContentType> = None;
+    if ctype.is_some() {
+        target_type = match ctype.clone().unwrap().to_ascii_lowercase().as_str() {
+            "normal" => Some(tmd::ContentType::Normal),
+            "shared" => Some(tmd::ContentType::Shared),
+            "dlc" => Some(tmd::ContentType::DLC),
+            _ => bail!("The specified content type \"{}\" is invalid!", ctype.clone().unwrap()),
+        };
+    }
+    // Parse the identifier passed to choose how to do the find and replace.
+    if identifier.index.is_some() {
+        match title.set_content(&new_content, identifier.index.unwrap(), None, target_type) {
+            Err(title::TitleError::Content(content::ContentError::IndexOutOfRange { index, max })) => {
+                bail!("The specified index {} does not exist in this WAD! The maximum index is {}.", index, max)
+            },
+            Err(e) => bail!("An unknown error occurred while setting the new content: {e}"),
+            Ok(_) => (),
+        }
+        title.fakesign().with_context(|| "An unknown error occurred while fakesigning the modified WAD.")?;
+        fs::write(&out_path, title.to_wad()?.to_bytes()?).with_context(|| "Could not open output file for writing.")?;
+        println!("Successfully replaced content at index {} in WAD file \"{}\".", identifier.index.unwrap(), out_path.display());
+    } else if identifier.cid.is_some() {
+        let cid = u32::from_str_radix(identifier.cid.clone().unwrap().as_str(), 16).with_context(|| "The specified Content ID is invalid!")?;
+        let index = match title.content.get_index_from_cid(cid) {
+            Ok(index) => index,
+            Err(_) => bail!("The specified Content ID \"{}\" ({}) does not exist in this WAD!", identifier.cid.clone().unwrap(), cid),
+        };
+        title.set_content(&new_content, index, None, target_type).with_context(|| "An unknown error occurred while setting the new content.")?;
+        title.fakesign().with_context(|| "An unknown error occurred while fakesigning the modified WAD.")?;
+        fs::write(&out_path, title.to_wad()?.to_bytes()?).with_context(|| "Could not open output file for writing.")?;
+        println!("Successfully replaced content with Content ID \"{}\" ({}) in WAD file \"{}\".", identifier.cid.clone().unwrap(), cid, out_path.display());
+    }
     Ok(())
 }

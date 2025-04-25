@@ -127,6 +127,9 @@ fn main() -> Result<()> {
                 },
                 title::wad::Commands::Unpack { input, output } => {
                     title::wad::unpack_wad(input, output)?
+                },
+                title::wad::Commands::Set { input, content, output, identifier, r#type} => {
+                    title::wad::set_wad(input, content, output, identifier, r#type)?
                 }
             }
         },

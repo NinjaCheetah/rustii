@@ -110,6 +110,20 @@ impl ContentRegion {
         }
         Ok(buf)
     }
+    
+    /// Gets the index of content using its Content ID.
+    pub fn get_index_from_cid(&self, cid: u32) -> Result<usize, ContentError> {
+        // Use fancy Rust find and map methods to find the index matching the provided CID. Take
+        // that libWiiPy!
+        let content_index = self.content_records.iter()
+            .find(|record| record.content_id == cid)
+            .map(|record| record.index);
+        if let Some(index) = content_index {
+            Ok(index as usize)
+        } else {
+            Err(ContentError::CIDNotFound(cid))
+        }
+    }
 
     /// Gets the encrypted content file from the ContentRegion at the specified index.
     pub fn get_enc_content_by_index(&self, index: usize) -> Result<Vec<u8>, ContentError> {
