@@ -119,18 +119,24 @@ fn main() -> Result<()> {
         },
         Some(Commands::Wad { command }) => {
             match command {
+                title::wad::Commands::Add { input, content, output, cid, r#type } => {
+                    title::wad::add_wad(input, content, output, cid, r#type)?
+                },
                 title::wad::Commands::Convert { input, target, output } => {
                     title::wad::convert_wad(input, target, output)?
                 },
                 title::wad::Commands::Pack { input, output} => {
                     title::wad::pack_wad(input, output)?
                 },
-                title::wad::Commands::Unpack { input, output } => {
-                    title::wad::unpack_wad(input, output)?
+                title::wad::Commands::Remove { input, output, identifier } => {
+                    title::wad::remove_wad(input, output, identifier)?
                 },
                 title::wad::Commands::Set { input, content, output, identifier, r#type} => {
                     title::wad::set_wad(input, content, output, identifier, r#type)?
-                }
+                },
+                title::wad::Commands::Unpack { input, output } => {
+                    title::wad::unpack_wad(input, output)?
+                },
             }
         },
         None => { /* Clap handles no passed command by itself */}

@@ -140,6 +140,16 @@ impl Title {
         self.tmd.content_records = self.content.content_records.clone();
         Ok(())
     }
+
+    /// Adds new decrypted content to the end of the content list and content records. The provided
+    /// Content ID and type will be added to the record alongside a hash of the decrypted data. An
+    /// index will be automatically assigned based on the highest index currently recorded in the
+    /// content records.
+    pub fn add_content(&mut self, content: &[u8], cid: u32, content_type: tmd::ContentType) -> Result<(), TitleError> {
+        self.content.add_content(content, cid, content_type, self.ticket.dec_title_key())?;
+        self.tmd.content_records = self.content.content_records.clone();
+        Ok(())
+    }
     
     /// Gets the installed size of the title, in bytes. Use the optional parameter "absolute" to set
     /// whether shared content should be included in this total or not.

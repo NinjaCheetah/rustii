@@ -8,12 +8,30 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use clap::{Subcommand, Args};
 use glob::glob;
+use rand::prelude::*;
 use rustii::title::{cert, crypto, tmd, ticket, content, wad};
 use rustii::title;
 
 #[derive(Subcommand)]
 #[command(arg_required_else_help = true)]
 pub enum Commands {
+    /// Add new content to a WAD file
+    Add {
+        /// The path to the WAD file to modify
+        input: String,
+        /// The path to the new content to add
+        content: String,
+        /// An optional output path; defaults to overwriting input WAD file
+        #[arg(short, long)]
+        output: Option<String>,
+        /// An optional Content ID for the new content; defaults to being randomly assigned
+        #[arg(short, long)]
+        cid: Option<String>,
+        /// An optional type for the new content, can be "Normal", "Shared", or "DLC"; defaults to
+        /// "Normal"
+        #[arg(short, long)]
+        r#type: Option<String>,
+    },
     /// Re-encrypt a WAD file with a different key
     Convert {
         /// The path to the WAD to convert
@@ -31,18 +49,21 @@ pub enum Commands {
         /// The name of the packed WAD file
         output: String
     },
-    /// Unpack a WAD file into a directory
-    Unpack {
-        /// The path to the WAD to unpack
+    /// Remove content from a WAD file
+    Remove {
+        /// The path to the WAD file to modify
         input: String,
-        /// The directory to extract the WAD to
-        output: String
+        /// An optional output path; defaults to overwriting input WAD file
+        #[arg(short, long)]
+        output: Option<String>,
+        #[command(flatten)]
+        identifier: ContentIdentifier,
     },
     /// Replace existing content in a WAD file with new data
     Set {
         /// The path to the WAD file to modify
         input: String,
-        /// The new WAD content
+        /// The path to the new content to set
         content: String,
         /// An optional output path; defaults to overwriting input WAD file
         #[arg(short, long)]
@@ -52,7 +73,14 @@ pub enum Commands {
         r#type: Option<String>,
         #[command(flatten)]
         identifier: ContentIdentifier,
-    }
+    },
+    /// Unpack a WAD file into a directory
+    Unpack {
+        /// The path to the WAD to unpack
+        input: String,
+        /// The directory to extract the WAD to
+        output: String
+    },
 }
 
 #[derive(Args)]
@@ -74,10 +102,10 @@ pub struct ConvertTargets {
 #[clap(next_help_heading = "Content Identifier")]
 #[group(multiple = false, required = true)]
 pub struct ContentIdentifier {
-    /// The index of the content to replace
+    /// The index of the target content
     #[arg(short, long)]
     index: Option<usize>,
-    /// The Content ID of the content to replace
+    /// The Content ID of the target content
     #[arg(short, long)]
     cid: Option<String>,
 }
@@ -96,6 +124,60 @@ impl fmt::Display for Target {
             Target::Vwii => write!(f, "vWii"),
         }
     }
+}
+
+pub fn add_wad(input: &str, content: &str, output: &Option<String>, cid: &Option<String>, ctype: &Option<String>) -> Result<()> {
+    let in_path = Path::new(input);
+    if !in_path.exists() {
+        bail!("Source WAD \"{}\" could not be found.", in_path.display());
+    }
+    let content_path = Path::new(content);
+    if !content_path.exists() {
+        bail!("New content \"{}\" could not be found.", content_path.display());
+    }
+    let out_path = if output.is_some() {
+        PathBuf::from(output.clone().unwrap()).with_extension("wad")
+    } else {
+        in_path.to_path_buf()
+    };
+    // Load the WAD and parse the target type and Content ID.
+    let mut title = title::Title::from_bytes(&fs::read(in_path)?).with_context(|| "The provided WAD file could not be parsed, and is likely invalid.")?;
+    let new_content = fs::read(content_path)?;
+    let target_type = if ctype.is_some() {
+        match ctype.clone().unwrap().to_ascii_lowercase().as_str() {
+            "normal" => tmd::ContentType::Normal,
+            "shared" => tmd::ContentType::Shared,
+            "dlc" => tmd::ContentType::DLC,
+            _ => bail!("The specified content type \"{}\" is invalid!", ctype.clone().unwrap()),
+        }
+    } else {
+        tmd::ContentType::Normal
+    };
+    let target_cid = if cid.is_some() {
+        let cid = u32::from_str_radix(cid.clone().unwrap().as_str(), 16).with_context(|| "The specified Content ID is invalid!")?;
+        if title.content.content_records.iter().any(|record| record.content_id == cid) {
+            bail!("The specified Content ID \"{:08X}\" is already being used in this WAD!", cid);
+        }
+        cid
+    } else {
+        // Generate a random CID if one wasn't specified, and ensure that it isn't already in use.
+        let mut rng = rand::rng();
+        let mut cid: u32;
+        loop {
+            cid = rng.random_range(0..=0xFF);
+            if !title.content.content_records.iter().any(|record| record.content_id == cid) {
+                break;
+            }
+        }
+        cid
+    };
+    title.add_content(&new_content, target_cid, target_type.clone()).with_context(|| "An unknown error occurred while setting the new content.")?;
+    title.tmd.content_records = title.content.content_records.clone();
+    title.tmd.num_contents = title.content.num_contents;
+    title.fakesign().with_context(|| "An unknown error occurred while fakesigning the modified WAD.")?;
+    fs::write(&out_path, title.to_wad()?.to_bytes()?).with_context(|| "Could not open output file for writing.")?;
+    println!("Successfully added new content with Content ID \"{:08X}\" ({}) and type \"{}\" to WAD file \"{}\".", target_cid, target_cid, target_type, out_path.display());
+    Ok(())
 }
 
 pub fn convert_wad(input: &str, target: &ConvertTargets, output: &Option<String>) -> Result<()> {
@@ -239,35 +321,45 @@ pub fn pack_wad(input: &str, output: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn unpack_wad(input: &str, output: &str) -> Result<()> {
+pub fn remove_wad(input: &str, output: &Option<String>, identifier: &ContentIdentifier) ->  Result<()> {
     let in_path = Path::new(input);
     if !in_path.exists() {
-        bail!("Source WAD \"{}\" could not be found.", input);
+        bail!("Source WAD \"{}\" could not be found.", in_path.display());
     }
-    let wad_file = fs::read(in_path).with_context(|| format!("Failed to open WAD file \"{}\" for reading.", in_path.display()))?;
-    let title = title::Title::from_bytes(&wad_file).with_context(|| format!("The provided WAD file \"{}\" appears to be invalid.", in_path.display()))?;
-    let tid = hex::encode(title.tmd.title_id);
-    // Create output directory if it doesn't exist.
-    let out_path = Path::new(output);
-    if !out_path.exists() {
-        fs::create_dir(out_path).with_context(|| format!("The output directory \"{}\" could not be created.", out_path.display()))?;
+    let out_path = if output.is_some() {
+        PathBuf::from(output.clone().unwrap()).with_extension("wad")
+    } else {
+        in_path.to_path_buf()
+    };
+    let mut title = title::Title::from_bytes(&fs::read(in_path)?).with_context(|| "The provided WAD file could not be parsed, and is likely invalid.")?;
+    // Parse the identifier passed to choose how to find and remove the target.
+    // ...maybe don't take the above comment out of context
+    if identifier.index.is_some() {
+        title.content.remove_content(identifier.index.unwrap()).with_context(|| "The specified index does not exist in the provided WAD!")?;
+        // Sync the content records in the TMD with the modified ones in the ContentRegion. The fact
+        // that this is required is probably bad and should be addressed on the library side at some
+        // point.
+        title.tmd.content_records = title.content.content_records.clone();
+        title.tmd.num_contents = title.content.num_contents;
+        println!("{:?}", title.tmd);
+        title.fakesign().with_context(|| "An unknown error occurred while fakesigning the modified WAD.")?;
+        fs::write(&out_path, title.to_wad()?.to_bytes()?).with_context(|| "Could not open output file for writing.")?;
+        println!("Successfully removed content at index {} in WAD file \"{}\".", identifier.index.unwrap(), out_path.display());
+    } else if identifier.cid.is_some() {
+        let cid = u32::from_str_radix(identifier.cid.clone().unwrap().as_str(), 16).with_context(|| "The specified Content ID is invalid!")?;
+        let index = match title.content.get_index_from_cid(cid) {
+            Ok(index) => index,
+            Err(_) => bail!("The specified Content ID \"{}\" ({}) does not exist in this WAD!", identifier.cid.clone().unwrap(), cid),
+        };
+        title.content.remove_content(index).with_context(|| "An unknown error occurred while removing content from the WAD.")?;
+        // Ditto.
+        title.tmd.content_records = title.content.content_records.clone();
+        title.tmd.num_contents = title.content.num_contents;
+        println!("{:?}", title.tmd);
+        title.fakesign().with_context(|| "An unknown error occurred while fakesigning the modified WAD.")?;
+        fs::write(&out_path, title.to_wad()?.to_bytes()?).with_context(|| "Could not open output file for writing.")?;
+        println!("Successfully removed content with Content ID \"{}\" ({}) in WAD file \"{}\".", identifier.cid.clone().unwrap(), cid, out_path.display());
     }
-    // Write out all WAD components.
-    let tmd_file_name = format!("{}.tmd", tid);
-    fs::write(Path::join(out_path, tmd_file_name.clone()), title.tmd.to_bytes()?).with_context(|| format!("Failed to open TMD file \"{}\" for writing.", tmd_file_name))?;
-    let ticket_file_name = format!("{}.tik", tid);
-    fs::write(Path::join(out_path, ticket_file_name.clone()), title.ticket.to_bytes()?).with_context(|| format!("Failed to open Ticket file \"{}\" for writing.", ticket_file_name))?;
-    let cert_file_name = format!("{}.cert", tid);
-    fs::write(Path::join(out_path, cert_file_name.clone()), title.cert_chain.to_bytes()?).with_context(|| format!("Failed to open certificate chain file \"{}\" for writing.", cert_file_name))?;
-    let meta_file_name = format!("{}.footer", tid);
-    fs::write(Path::join(out_path, meta_file_name.clone()), title.meta()).with_context(|| format!("Failed to open footer file \"{}\" for writing.", meta_file_name))?;
-    // Iterate over contents, decrypt them, and write them out.
-    for i in 0..title.tmd.num_contents {
-        let content_file_name = format!("{:08X}.app", title.content.content_records[i as usize].index);
-        let dec_content = title.get_content_by_index(i as usize).with_context(|| format!("Failed to unpack content with Content ID {:08X}.", title.content.content_records[i as usize].content_id))?;
-        fs::write(Path::join(out_path, content_file_name), dec_content).with_context(|| format!("Failed to open content file \"{:08X}.app\" for writing.", title.content.content_records[i as usize].content_id))?;
-    }
-    println!("WAD file unpacked!");
     Ok(())
 }
 
@@ -280,7 +372,6 @@ pub fn set_wad(input: &str, content: &str, output: &Option<String>, identifier: 
     if !content_path.exists() {
         bail!("New content \"{}\" could not be found.", content_path.display());
     }
-    // Get the output name now that we know the target, if one wasn't passed.
     let out_path = if output.is_some() {
         PathBuf::from(output.clone().unwrap()).with_extension("wad")
     } else {
@@ -321,5 +412,37 @@ pub fn set_wad(input: &str, content: &str, output: &Option<String>, identifier: 
         fs::write(&out_path, title.to_wad()?.to_bytes()?).with_context(|| "Could not open output file for writing.")?;
         println!("Successfully replaced content with Content ID \"{}\" ({}) in WAD file \"{}\".", identifier.cid.clone().unwrap(), cid, out_path.display());
     }
+    Ok(())
+}
+
+pub fn unpack_wad(input: &str, output: &str) -> Result<()> {
+    let in_path = Path::new(input);
+    if !in_path.exists() {
+        bail!("Source WAD \"{}\" could not be found.", input);
+    }
+    let wad_file = fs::read(in_path).with_context(|| format!("Failed to open WAD file \"{}\" for reading.", in_path.display()))?;
+    let title = title::Title::from_bytes(&wad_file).with_context(|| format!("The provided WAD file \"{}\" appears to be invalid.", in_path.display()))?;
+    let tid = hex::encode(title.tmd.title_id);
+    // Create output directory if it doesn't exist.
+    let out_path = Path::new(output);
+    if !out_path.exists() {
+        fs::create_dir(out_path).with_context(|| format!("The output directory \"{}\" could not be created.", out_path.display()))?;
+    }
+    // Write out all WAD components.
+    let tmd_file_name = format!("{}.tmd", tid);
+    fs::write(Path::join(out_path, tmd_file_name.clone()), title.tmd.to_bytes()?).with_context(|| format!("Failed to open TMD file \"{}\" for writing.", tmd_file_name))?;
+    let ticket_file_name = format!("{}.tik", tid);
+    fs::write(Path::join(out_path, ticket_file_name.clone()), title.ticket.to_bytes()?).with_context(|| format!("Failed to open Ticket file \"{}\" for writing.", ticket_file_name))?;
+    let cert_file_name = format!("{}.cert", tid);
+    fs::write(Path::join(out_path, cert_file_name.clone()), title.cert_chain.to_bytes()?).with_context(|| format!("Failed to open certificate chain file \"{}\" for writing.", cert_file_name))?;
+    let meta_file_name = format!("{}.footer", tid);
+    fs::write(Path::join(out_path, meta_file_name.clone()), title.meta()).with_context(|| format!("Failed to open footer file \"{}\" for writing.", meta_file_name))?;
+    // Iterate over contents, decrypt them, and write them out.
+    for i in 0..title.tmd.num_contents {
+        let content_file_name = format!("{:08X}.app", title.content.content_records[i as usize].index);
+        let dec_content = title.get_content_by_index(i as usize).with_context(|| format!("Failed to unpack content with Content ID {:08X}.", title.content.content_records[i as usize].content_id))?;
+        fs::write(Path::join(out_path, content_file_name), dec_content).with_context(|| format!("Failed to open content file \"{:08X}.app\" for writing.", title.content.content_records[i as usize].content_id))?;
+    }
+    println!("WAD file unpacked!");
     Ok(())
 }

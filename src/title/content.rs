@@ -6,7 +6,6 @@
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use sha1::{Sha1, Digest};
 use thiserror::Error;
-use crate::title::content::ContentError::MissingContents;
 use crate::title::tmd::{ContentRecord, ContentType};
 use crate::title::crypto;
 use crate::title::crypto::encrypt_content;
@@ -19,6 +18,10 @@ pub enum ContentError {
     MissingContents { required: usize, found: usize },
     #[error("content with requested Content ID {0} could not be found")]
     CIDNotFound(u32),
+    #[error("the specified index {0} already exists in the content records")]
+    IndexAlreadyExists(u16),
+    #[error("the specified Content ID {0} already exists in the content records")]
+    CIDAlreadyExists(u32),
     #[error("content's hash did not match the expected value (was {hash}, expected {expected})")]
     BadHash { hash: String, expected: String },
     #[error("content data is not in a valid format")]
@@ -73,7 +76,7 @@ impl ContentRegion {
     /// digital Wii title from a vector of contents and the ContentRecords from a TMD.
     pub fn from_contents(contents: Vec<Vec<u8>>, content_records: Vec<ContentRecord>) -> Result<Self, ContentError> {
         if contents.len() != content_records.len() {
-            return Err(MissingContents { required: content_records.len(), found: contents.len()});
+            return Err(ContentError::MissingContents { required: content_records.len(), found: contents.len()});
         }
         let mut content_region = Self::new(content_records)?;
         for i in 0..contents.len() {
@@ -189,6 +192,10 @@ impl ContentRegion {
         self.content_records[index].content_size = content_size;
         self.content_records[index].content_hash = content_hash;
         if cid.is_some() {
+            // Make sure that the new CID isn't already in use.
+            if self.content_records.iter().any(|record| record.content_id == cid.unwrap()) {
+                return Err(ContentError::CIDAlreadyExists(cid.unwrap()));
+            }
             self.content_records[index].content_id = cid.unwrap();
         }
         if content_type.is_some() {
@@ -229,6 +236,54 @@ impl ContentRegion {
         let content_hash: [u8; 20] = hasher.finalize().into();
         let content_enc = encrypt_content(content, title_key, index as u16, content_size);
         self.set_enc_content(&content_enc, index, content_size, content_hash, cid, content_type)?;
+        Ok(())
+    }
+    
+    /// Removes the content at the specified index from the content list and content records. This
+    /// may leave a gap in the indexes recorded in the content records, but this should not cause
+    /// issues on the Wii or with correctly implemented WAD parsers.
+    pub fn remove_content(&mut self, index: usize) -> Result<(), ContentError> {
+        if self.contents.get(index).is_none() || self.content_records.get(index).is_none() {
+            return Err(ContentError::IndexOutOfRange { index, max: self.content_records.len() - 1 });
+        }
+        self.contents.remove(index);
+        self.content_records.remove(index);
+        self.num_contents -= 1;
+        Ok(())
+    }
+
+    /// Adds new encrypted content to the end of the content list and content records. The provided
+    /// Content ID, type, index, and decrypted hash will be added to the record.
+    pub fn add_enc_content(&mut self, content: &[u8], index: u16, cid: u32, content_type: ContentType, content_size: u64, content_hash: [u8; 20]) -> Result<(), ContentError> {
+        // Return an error if the specified index or CID already exist in the records.
+        if self.content_records.iter().any(|record| record.index == index) {
+            return Err(ContentError::IndexAlreadyExists(index));
+        }
+        if self.content_records.iter().any(|record| record.content_id == cid) {
+            return Err(ContentError::CIDAlreadyExists(cid));
+        }
+        self.contents.push(content.to_vec());
+        self.content_records.push(ContentRecord { content_id: cid, index, content_type, content_size, content_hash });
+        self.num_contents += 1;
+        Ok(())
+    }
+    
+    /// Adds new decrypted content to the end of the content list and content records. The provided
+    /// Content ID and type will be added to the record alongside a hash of the decrypted data. An
+    /// index will be automatically assigned based on the highest index currently recorded in the
+    /// content records.
+    pub fn add_content(&mut self, content: &[u8], cid: u32, content_type: ContentType, title_key: [u8; 16]) -> Result<(), ContentError> {
+        let max_index = self.content_records.iter()
+            .max_by_key(|record| record.index)
+            .map(|record| record.index)
+            .unwrap_or(0); // This should be impossible, but I guess 0 is a safe value just in case?
+        let new_index = max_index + 1;
+        let content_size = content.len() as u64;
+        let mut hasher = Sha1::new();
+        hasher.update(content);
+        let content_hash: [u8; 20] = hasher.finalize().into();
+        let content_enc = encrypt_content(content, title_key, new_index, content_size);
+        self.add_enc_content(&content_enc, new_index, cid, content_type, content_size, content_hash)?;
         Ok(())
     }
 }
