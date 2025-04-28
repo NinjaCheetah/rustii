@@ -151,11 +151,12 @@ pub fn add_wad(input: &str, content: &str, output: &Option<String>, cid: &Option
             _ => bail!("The specified content type \"{}\" is invalid!", ctype.clone().unwrap()),
         }
     } else {
+        println!("Using default type \"Normal\" because no content type was specified.");
         tmd::ContentType::Normal
     };
     let target_cid = if cid.is_some() {
         let cid = u32::from_str_radix(cid.clone().unwrap().as_str(), 16).with_context(|| "The specified Content ID is invalid!")?;
-        if title.content.content_records.iter().any(|record| record.content_id == cid) {
+        if title.content.content_records.borrow().iter().any(|record| record.content_id == cid) {
             bail!("The specified Content ID \"{:08X}\" is already being used in this WAD!", cid);
         }
         cid
@@ -165,18 +166,17 @@ pub fn add_wad(input: &str, content: &str, output: &Option<String>, cid: &Option
         let mut cid: u32;
         loop {
             cid = rng.random_range(0..=0xFF);
-            if !title.content.content_records.iter().any(|record| record.content_id == cid) {
+            if !title.content.content_records.borrow().iter().any(|record| record.content_id == cid) {
                 break;
             }
         }
+        println!("Generated new random Content ID \"{:08X}\" ({}) because no Content ID was specified.", cid, cid);
         cid
     };
     title.add_content(&new_content, target_cid, target_type.clone()).with_context(|| "An unknown error occurred while setting the new content.")?;
-    title.tmd.content_records = title.content.content_records.clone();
-    title.tmd.num_contents = title.content.num_contents;
     title.fakesign().with_context(|| "An unknown error occurred while fakesigning the modified WAD.")?;
     fs::write(&out_path, title.to_wad()?.to_bytes()?).with_context(|| "Could not open output file for writing.")?;
-    println!("Successfully added new content with Content ID \"{:08X}\" ({}) and type \"{}\" to WAD file \"{}\".", target_cid, target_cid, target_type, out_path.display());
+    println!("Successfully added new content with Content ID \"{:08X}\" ({}) and type \"{}\" to WAD file \"{}\"!", target_cid, target_cid, target_type, out_path.display());
     Ok(())
 }
 
@@ -296,7 +296,7 @@ pub fn pack_wad(input: &str, output: &str) -> Result<()> {
     }
     // Iterate over expected content and read it into a content region.
     let mut content_region = content::ContentRegion::new(tmd.content_records.clone())?;
-    for content in tmd.content_records.clone() {
+    for content in tmd.content_records.borrow().iter() {
         let data = fs::read(format!("{}/{:08X}.app", in_path.display(), content.index)).with_context(|| format!("Could not open content file \"{:08X}.app\" for reading.", content.index))?;
         content_region.set_content(&data, content.index as usize, None, None, tik.dec_title_key())
             .with_context(|| "Failed to load content into the ContentRegion.")?;
@@ -336,11 +336,6 @@ pub fn remove_wad(input: &str, output: &Option<String>, identifier: &ContentIden
     // ...maybe don't take the above comment out of context
     if identifier.index.is_some() {
         title.content.remove_content(identifier.index.unwrap()).with_context(|| "The specified index does not exist in the provided WAD!")?;
-        // Sync the content records in the TMD with the modified ones in the ContentRegion. The fact
-        // that this is required is probably bad and should be addressed on the library side at some
-        // point.
-        title.tmd.content_records = title.content.content_records.clone();
-        title.tmd.num_contents = title.content.num_contents;
         println!("{:?}", title.tmd);
         title.fakesign().with_context(|| "An unknown error occurred while fakesigning the modified WAD.")?;
         fs::write(&out_path, title.to_wad()?.to_bytes()?).with_context(|| "Could not open output file for writing.")?;
@@ -352,9 +347,6 @@ pub fn remove_wad(input: &str, output: &Option<String>, identifier: &ContentIden
             Err(_) => bail!("The specified Content ID \"{}\" ({}) does not exist in this WAD!", identifier.cid.clone().unwrap(), cid),
         };
         title.content.remove_content(index).with_context(|| "An unknown error occurred while removing content from the WAD.")?;
-        // Ditto.
-        title.tmd.content_records = title.content.content_records.clone();
-        title.tmd.num_contents = title.content.num_contents;
         println!("{:?}", title.tmd);
         title.fakesign().with_context(|| "An unknown error occurred while fakesigning the modified WAD.")?;
         fs::write(&out_path, title.to_wad()?.to_bytes()?).with_context(|| "Could not open output file for writing.")?;
@@ -438,10 +430,10 @@ pub fn unpack_wad(input: &str, output: &str) -> Result<()> {
     let meta_file_name = format!("{}.footer", tid);
     fs::write(Path::join(out_path, meta_file_name.clone()), title.meta()).with_context(|| format!("Failed to open footer file \"{}\" for writing.", meta_file_name))?;
     // Iterate over contents, decrypt them, and write them out.
-    for i in 0..title.tmd.num_contents {
-        let content_file_name = format!("{:08X}.app", title.content.content_records[i as usize].index);
-        let dec_content = title.get_content_by_index(i as usize).with_context(|| format!("Failed to unpack content with Content ID {:08X}.", title.content.content_records[i as usize].content_id))?;
-        fs::write(Path::join(out_path, content_file_name), dec_content).with_context(|| format!("Failed to open content file \"{:08X}.app\" for writing.", title.content.content_records[i as usize].content_id))?;
+    for i in 0..title.tmd.content_records.borrow().len() {
+        let content_file_name = format!("{:08X}.app", title.content.content_records.borrow()[i].index);
+        let dec_content = title.get_content_by_index(i).with_context(|| format!("Failed to unpack content with Content ID {:08X}.", title.content.content_records.borrow()[i].content_id))?;
+        fs::write(Path::join(out_path, content_file_name), dec_content).with_context(|| format!("Failed to open content file \"{:08X}.app\" for writing.", title.content.content_records.borrow()[i].content_id))?;
     }
     println!("WAD file unpacked!");
     Ok(())

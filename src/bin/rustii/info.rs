@@ -117,10 +117,10 @@ fn print_tmd_info(tmd: tmd::TMD, cert: Option<cert::Certificate>) -> Result<()> 
         println!("  Fakesigned: {}", tmd.is_fakesigned());
     }
     println!("\nContent Info");
-    println!("  Total Contents: {}", tmd.num_contents);
+    println!("  Total Contents: {}", tmd.content_records.borrow().len());
     println!("  Boot Content Index: {}", tmd.boot_index);
     println!("  Content Records:");
-    for content in tmd.content_records {
+    for content in tmd.content_records.borrow().iter() {
         println!("    Content Index: {}", content.index);
         println!("      Content ID: {:08X}", content.content_id);
         println!("      Content Type: {}", content.content_type);

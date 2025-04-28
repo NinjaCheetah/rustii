@@ -11,8 +11,8 @@ fn main() {
     
     let wad = wad::WAD::from_bytes(&data).unwrap();
     println!("size of tmd: {:?}", wad.tmd().len());
-    println!("num content records: {:?}", title.tmd.content_records.len());
-    println!("first record data: {:?}", title.tmd.content_records.first().unwrap());
+    println!("num content records: {:?}", title.tmd.content_records.borrow().len());
+    println!("first record data: {:?}", title.tmd.content_records.borrow().first().unwrap());
     println!("TMD is fakesigned: {:?}",title.tmd.is_fakesigned());
     
     println!("title version from ticket is: {:?}", title.ticket.title_version);

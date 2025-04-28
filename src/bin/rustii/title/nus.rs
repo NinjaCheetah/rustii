@@ -109,7 +109,7 @@ pub fn download_content(tid: &str, cid: &str, version: &Option<String>, output: 
             Err(_) => bail!("No Ticket is available for this title! The content cannot be decrypted.")
         };
         println!(" - Decrypting content...");
-        let (content_hash, content_size, content_index) = tmd.content_records.iter()
+        let (content_hash, content_size, content_index) = tmd.content_records.borrow().iter()
             .find(|record| record.content_id == cid)
             .map(|record| (record.content_hash, record.content_size, record.index))
             .with_context(|| "No matching content record could be found. Please make sure the requested content is from the specified title version.")?;
@@ -167,7 +167,7 @@ fn download_title_dir(title: title::Title, output: String) -> Result<()> {
     println!("  - Saving certificate chain...");
     fs::write(out_path.join(format!("{}.cert", &tid)), title.cert_chain.to_bytes()?).with_context(|| format!("Failed to open certificate chain file \"{}.cert\" for writing.", tid))?;
     // Iterate over the content files and write them out in encrypted form.
-    for record in &title.content.content_records {
+    for record in title.content.content_records.borrow().iter() {
         println!("  - Decrypting and saving content with Content ID {}...", record.content_id);
         fs::write(out_path.join(format!("{:08X}.app", record.content_id)), title.get_content_by_cid(record.content_id)?)
             .with_context(|| format!("Failed to open content file \"{:08X}.app\" for writing.", record.content_id))?;
@@ -192,7 +192,7 @@ fn download_title_dir_enc(tmd: tmd::TMD, content_region: content::ContentRegion,
     println!("  - Saving certificate chain...");
     fs::write(out_path.join(format!("{}.cert", &tid)), cert_chain.to_bytes()?).with_context(|| format!("Failed to open certificate chain file \"{}.cert\" for writing.", tid))?;
     // Iterate over the content files and write them out in encrypted form.
-    for record in &content_region.content_records {
+    for record in content_region.content_records.borrow().iter() {
         println!("  - Saving content with Content ID {}...", record.content_id);
         fs::write(out_path.join(format!("{:08X}", record.content_id)), content_region.get_enc_content_by_cid(record.content_id)?)
             .with_context(|| format!("Failed to open content file \"{:08X}\" for writing.", record.content_id))?;
@@ -241,9 +241,9 @@ pub fn download_title(tid: &str, version: &Option<String>, output: &TitleOutputT
     };
     // Build a vec of contents by iterating over the content records and downloading each one.
     let mut contents: Vec<Vec<u8>> = Vec::new();
-    for record in &tmd.content_records {
+    for record in tmd.content_records.borrow().iter() {
         println!(" - Downloading content {} of {} (Content ID: {}, Size: {} bytes)...",
-            record.index + 1, &tmd.content_records.len(), record.content_id, record.content_size);
+            record.index + 1, &tmd.content_records.borrow().len(), record.content_id, record.content_size);
         contents.push(nus::download_content(tid, record.content_id, true).with_context(|| format!("Content with Content ID {} could not be downloaded.", record.content_id))?);
         println!("   - Done!");
     }

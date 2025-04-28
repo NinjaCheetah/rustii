@@ -80,7 +80,7 @@ pub fn download_content(title_id: [u8; 8], content_id: u32, wiiu_endpoint: bool)
 
 /// Downloads all contents from the specified title from the NUS.
 pub fn download_contents(tmd: &tmd::TMD, wiiu_endpoint: bool) -> Result<Vec<Vec<u8>>, NUSError> {
-    let content_ids: Vec<u32> = tmd.content_records.iter().map(|record| { record.content_id }).collect();
+    let content_ids: Vec<u32> = tmd.content_records.borrow().iter().map(|record| { record.content_id }).collect();
     let mut contents: Vec<Vec<u8>> = Vec::new();
     for id in content_ids {
         contents.push(download_content(tmd.title_id, id, wiiu_endpoint)?);

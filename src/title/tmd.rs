@@ -3,9 +3,11 @@
 //
 // Implements the structures and methods required for TMD parsing and editing.
 
+use std::cell::RefCell;
 use std::fmt;
 use std::io::{Cursor, Read, Write};
 use std::ops::Index;
+use std::rc::Rc;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use sha1::{Sha1, Digest};
 use thiserror::Error;
@@ -110,7 +112,7 @@ pub struct TMD {
     pub num_contents: u16,
     pub boot_index: u16,
     pub minor_version: u16, // Normally unused, but good for fakesigning!
-    pub content_records: Vec<ContentRecord>,
+    pub content_records: Rc<RefCell<Vec<ContentRecord>>>,
 }
 
 impl TMD {
@@ -204,7 +206,7 @@ impl TMD {
             num_contents,
             boot_index,
             minor_version,
-            content_records,
+            content_records: Rc::new(RefCell::new(content_records)),
         })
     }
     
@@ -231,11 +233,11 @@ impl TMD {
         buf.write_all(&self.reserved2)?;
         buf.write_u32::<BigEndian>(self.access_rights)?;
         buf.write_u16::<BigEndian>(self.title_version)?;
-        buf.write_u16::<BigEndian>(self.num_contents)?;
+        buf.write_u16::<BigEndian>(self.content_records.borrow().len() as u16)?;
         buf.write_u16::<BigEndian>(self.boot_index)?;
         buf.write_u16::<BigEndian>(self.minor_version)?;
         // Iterate over content records and write out content record data.
-        for content in &self.content_records {
+        for content in self.content_records.borrow().iter() {
             buf.write_u32::<BigEndian>(content.content_id)?;
             buf.write_u16::<BigEndian>(content.index)?;
             match content.content_type {
@@ -317,11 +319,11 @@ impl TMD {
         // Find possible content indices, because the provided one could exist while the indices
         // are out of order, which could cause problems finding the content.
         let mut content_indices = Vec::new();
-        for record in &self.content_records {
+        for record in self.content_records.borrow().iter() {
             content_indices.push(record.index);
         }
         let target_index = content_indices.index(index);
-        match self.content_records[*target_index as usize].content_type {
+        match self.content_records.borrow()[*target_index as usize].content_type {
             ContentType::Normal => ContentType::Normal,
             ContentType::Development => ContentType::Development,
             ContentType::HashTree => ContentType::HashTree,

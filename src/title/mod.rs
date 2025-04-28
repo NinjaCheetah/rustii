@@ -13,6 +13,7 @@ pub mod tmd;
 pub mod versions;
 pub mod wad;
 
+use std::rc::Rc;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -52,7 +53,7 @@ impl Title {
         let cert_chain = cert::CertificateChain::from_bytes(&wad.cert_chain()).map_err(TitleError::CertificateError)?;
         let ticket = ticket::Ticket::from_bytes(&wad.ticket()).map_err(TitleError::Ticket)?;
         let tmd = tmd::TMD::from_bytes(&wad.tmd()).map_err(TitleError::TMD)?;
-        let content = content::ContentRegion::from_bytes(&wad.content(), tmd.content_records.clone()).map_err(TitleError::Content)?;
+        let content = content::ContentRegion::from_bytes(&wad.content(), Rc::clone(&tmd.content_records)).map_err(TitleError::Content)?;
         Ok(Title {
             cert_chain,
             crl: wad.crl(),
@@ -137,7 +138,6 @@ impl Title {
     /// content type can be provided, with the existing values being preserved by default.
     pub fn set_content(&mut self, content: &[u8], index: usize, cid: Option<u32>, content_type: Option<tmd::ContentType>) -> Result<(), TitleError> {
         self.content.set_content(content, index, cid, content_type, self.ticket.dec_title_key())?;
-        self.tmd.content_records = self.content.content_records.clone();
         Ok(())
     }
 
@@ -147,7 +147,6 @@ impl Title {
     /// content records.
     pub fn add_content(&mut self, content: &[u8], cid: u32, content_type: tmd::ContentType) -> Result<(), TitleError> {
         self.content.add_content(content, cid, content_type, self.ticket.dec_title_key())?;
-        self.tmd.content_records = self.content.content_records.clone();
         Ok(())
     }
     
@@ -159,7 +158,7 @@ impl Title {
         // accurate results.
         title_size += self.tmd.to_bytes().map_err(|x| TitleError::TMD(tmd::TMDError::IO(x)))?.len();
         title_size += self.ticket.to_bytes().map_err(|x| TitleError::Ticket(ticket::TicketError::IO(x)))?.len();
-        for record in &self.tmd.content_records {
+        for record in self.tmd.content_records.borrow().iter() {
             if matches!(record.content_type, tmd::ContentType::Shared) {
                 if absolute == Some(true) {
                     title_size += record.content_size as usize;
