@@ -18,21 +18,27 @@ pub enum TMDError {
     CannotFakesign,
     #[error("signature issuer string must not exceed 64 characters (was {0})")]
     IssuerTooLong(usize),
+    #[error("invalid IOS Title ID, IOSes must have a Title ID beginning with 00000001 (type 'System')")]
+    InvalidIOSTitleID,
+    #[error("invalid IOS version `{0}`, IOS version must be in the range 3-255")]
+    InvalidIOSVersion(u32),
     #[error("TMD data contains content record with invalid type `{0}`")]
     InvalidContentType(u16),
+    #[error("encountered unknown title type `{0}`")]
+    InvalidTitleType(String),
     #[error("TMD data is not in a valid format")]
     IO(#[from] std::io::Error),
 }
 
+#[repr(u32)]
 pub enum TitleType {
-    System,
-    Game,
-    Channel,
-    SystemChannel,
-    GameChannel,
-    DLC,
-    HiddenChannel,
-    Unknown,
+    System = 0x00000001,
+    Game =  0x00010000,
+    Channel = 0x00010001,
+    SystemChannel = 0x00010002,
+    GameChannel = 0x00010004,
+    DLC = 0x00010005,
+    HiddenChannel = 0x00010008,
 }
 
 impl fmt::Display for TitleType {
@@ -45,7 +51,6 @@ impl fmt::Display for TitleType {
             TitleType::GameChannel => write!(f, "GameChannel"),
             TitleType::DLC => write!(f, "DLC"),
             TitleType::HiddenChannel => write!(f, "HiddenChannel"),
-            TitleType::Unknown => write!(f, "Unknown"),
         }
     }
 }
@@ -97,9 +102,9 @@ pub struct TMD {
     pub ca_crl_version: u8,
     pub signer_crl_version: u8,
     pub is_vwii: u8,
-    pub ios_tid: [u8; 8],
-    pub title_id: [u8; 8],
-    pub title_type: [u8; 4],
+    ios_tid: [u8; 8],
+    title_id: [u8; 8],
+    title_type: [u8; 4],
     pub group_id: u16,
     padding2: [u8; 2],
     region: u16,
@@ -301,17 +306,24 @@ impl TMD {
     }
 
     /// Gets the type of title described by a TMD.
-    pub fn title_type(&self) -> TitleType {
+    pub fn title_type(&self) -> Result<TitleType, TMDError> {
         match hex::encode(self.title_id)[..8].to_string().as_str() {
-            "00000001" => TitleType::System,
-            "00010000" => TitleType::Game,
-            "00010001" => TitleType::Channel,
-            "00010002" => TitleType::SystemChannel,
-            "00010004" => TitleType::GameChannel,
-            "00010005" => TitleType::DLC,
-            "00010008" => TitleType::HiddenChannel,
-            _ => TitleType::Unknown,
+            "00000001" => Ok(TitleType::System),
+            "00010000" => Ok(TitleType::Game),
+            "00010001" => Ok(TitleType::Channel),
+            "00010002" => Ok(TitleType::SystemChannel),
+            "00010004" => Ok(TitleType::GameChannel),
+            "00010005" => Ok(TitleType::DLC),
+            "00010008" => Ok(TitleType::HiddenChannel),
+            _ => Err(TMDError::InvalidTitleType(hex::encode(self.title_id)[..8].to_string())),
         }
+    }
+
+    /// Sets the type of title described by a TMD.
+    pub fn set_title_type(&mut self, new_type: TitleType) -> Result<(), TMDError> {
+        let new_type: [u8; 4] = (new_type as u32).to_be_bytes();
+        self.title_type = new_type;
+        Ok(())
     }
 
     /// Gets the type of content described by a content record in a TMD.
@@ -353,8 +365,39 @@ impl TMD {
         Ok(())
     }
     
-    /// Gets whether this TMD describes a vWii title or not.
+    /// Gets whether a TMD describes a vWii title or not.
     pub fn is_vwii(&self) -> bool {
         self.is_vwii == 1
+    }
+    
+    /// Gets the Title ID of a TMD.
+    pub fn title_id(&self) -> [u8; 8] {
+        self.title_id
+    }
+    
+    /// Sets a new Title ID for a TMD.
+    pub fn set_title_id(&mut self, title_id: [u8; 8]) -> Result<(), TMDError> {
+        self.title_id = title_id;
+        Ok(())
+    }
+
+    /// Gets the Title ID of the IOS required by a TMD.
+    pub fn ios_tid(&self) -> [u8; 8] {
+        self.ios_tid
+    }
+
+    /// Sets the Title ID of the IOS required by a TMD. The Title ID must be in the valid range of
+    /// IOS versions, from 0000000100000003 to 00000001000000FF.
+    pub fn set_ios_tid(&mut self, ios_tid: [u8; 8]) -> Result<(), TMDError> {
+        let tid_high = &ios_tid[0..4];
+        if hex::encode(tid_high) != "00000001" {
+            return Err(TMDError::InvalidIOSTitleID);
+        }
+        let ios_version = u32::from_be_bytes(ios_tid[4..8].try_into().unwrap());
+        if !(3..=255).contains(&ios_version) {
+            return Err(TMDError::InvalidIOSVersion(ios_version));
+        }
+        self.ios_tid = ios_tid;
+        Ok(())
     }
 }

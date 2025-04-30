@@ -171,13 +171,6 @@ impl Title {
         Ok(title_size)
     }
     
-    /// Gets the installed size of the title, in blocks. Use the optional parameter "absolute" to
-    /// set whether shared content should be included in this total or not.
-    pub fn title_size_blocks(&self, absolute: Option<bool>) -> Result<usize, TitleError> {
-        let title_size_bytes = self.title_size(absolute)?;
-        Ok((title_size_bytes as f64 / 131072.0).ceil() as usize)
-    }
-
     /// Verifies entire certificate chain, and then the TMD and Ticket. Returns true if the title
     /// is entirely valid, or false if any component of the verification fails.
     pub fn verify(&self) -> Result<bool, TitleError> {
@@ -193,6 +186,14 @@ impl Title {
             return Ok(false)
         }
         Ok(true)
+    }
+    
+    /// Sets a new Title ID for the Title. This will re-encrypt the Title Key in the Ticket, since 
+    /// the Title ID is used as the IV for decrypting the Title Key.
+    pub fn set_title_id(&mut self, title_id: [u8; 8]) -> Result<(), TitleError> {
+        self.tmd.set_title_id(title_id)?;
+        self.ticket.set_title_id(title_id)?;
+        Ok(())
     }
 
     pub fn set_cert_chain(&mut self, cert_chain: cert::CertificateChain) {
@@ -226,4 +227,9 @@ impl Title {
     pub fn set_meta(&mut self, meta: &[u8]) {
         self.meta = meta.to_vec();
     }
+}
+
+/// Converts bytes to the Wii's storage unit, blocks.
+pub fn bytes_to_blocks(size_bytes: usize) -> usize {
+    (size_bytes as f64 / 131072.0).ceil() as usize
 }

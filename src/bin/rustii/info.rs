@@ -44,14 +44,14 @@ fn print_title_version(title_version: u16, title_id: [u8; 8], is_vwii: bool) -> 
 fn print_tmd_info(tmd: tmd::TMD, cert: Option<cert::Certificate>) -> Result<()> {
     // Print all important keys from the TMD.
     println!("Title Info");
-    print_tid(tmd.title_id)?;
-    print_title_version(tmd.title_version, tmd.title_id, tmd.is_vwii())?;
+    print_tid(tmd.title_id())?;
+    print_title_version(tmd.title_version, tmd.title_id(), tmd.is_vwii())?;
     println!("  TMD Version: {}", tmd.tmd_version);
-    if hex::encode(tmd.ios_tid).eq("0000000000000000") {
+    if hex::encode(tmd.ios_tid()).eq("0000000000000000") {
         println!("  Required IOS: N/A");
     }
-    else if hex::encode(tmd.ios_tid).ne(&format!("{:016X}", tmd.title_version)) {
-        println!("  Required IOS: IOS{} ({})", tmd.ios_tid.last().unwrap(), hex::encode(tmd.ios_tid).to_uppercase());
+    else if hex::encode(tmd.ios_tid()).ne(&format!("{:016X}", tmd.title_version)) {
+        println!("  Required IOS: IOS{} ({})", tmd.ios_tid().last().unwrap(), hex::encode(tmd.ios_tid()).to_uppercase());
     }
     let signature_issuer = String::from_utf8(Vec::from(tmd.signature_issuer)).unwrap_or_default();
     if signature_issuer.contains("CP00000004") {
@@ -73,8 +73,8 @@ fn print_tmd_info(tmd: tmd::TMD, cert: Option<cert::Certificate>) -> Result<()> 
     else {
         println!("  Certificate Info: {} (Unknown)", signature_issuer);
     }
-    let region = if hex::encode(tmd.title_id).eq("0000000100000002") {
-        match versions::dec_to_standard(tmd.title_version, &hex::encode(tmd.title_id), Some(tmd.is_vwii != 0))
+    let region = if hex::encode(tmd.title_id()).eq("0000000100000002") {
+        match versions::dec_to_standard(tmd.title_version, &hex::encode(tmd.title_id()), Some(tmd.is_vwii != 0))
             .unwrap_or_default().chars().last() {
             Some('U') => "USA",
             Some('E') => "EUR",
@@ -82,13 +82,13 @@ fn print_tmd_info(tmd: tmd::TMD, cert: Option<cert::Certificate>) -> Result<()> 
             Some('K') => "KOR",
             _ => "None"
         }
-    } else if matches!(tmd.title_type(), tmd::TitleType::System) {
+    } else if matches!(tmd.title_type(), Ok(tmd::TitleType::System)) {
         "None"
     } else {
         tmd.region()
     };
     println!("  Region: {}", region);
-    println!("  Title Type: {}", tmd.title_type());
+    println!("  Title Type: {}", tmd.title_type()?);
     println!("  vWii Title: {}", tmd.is_vwii != 0);
     println!("  DVD Video Access: {}", tmd.check_access_right(tmd::AccessRight::DVDVideo));
     println!("  AHB Access: {}", tmd.check_access_right(tmd::AccessRight::AHB));
@@ -124,7 +124,7 @@ fn print_tmd_info(tmd: tmd::TMD, cert: Option<cert::Certificate>) -> Result<()> 
         println!("    Content Index: {}", content.index);
         println!("      Content ID: {:08X}", content.content_id);
         println!("      Content Type: {}", content.content_type);
-        println!("      Content Size: {} bytes", content.content_size);
+        println!("      Content Size: {} bytes ({} blocks)", content.content_size, title::bytes_to_blocks(content.content_size as usize));
         println!("      Content Hash: {}", hex::encode(content.content_hash));
     }
     Ok(())
@@ -133,8 +133,8 @@ fn print_tmd_info(tmd: tmd::TMD, cert: Option<cert::Certificate>) -> Result<()> 
 fn print_ticket_info(ticket: ticket::Ticket, cert: Option<cert::Certificate>) -> Result<()> {
     // Print all important keys from the Ticket.
     println!("Ticket Info");
-    print_tid(ticket.title_id)?;
-    print_title_version(ticket.title_version, ticket.title_id, ticket.common_key_index == 2)?;
+    print_tid(ticket.title_id())?;
+    print_title_version(ticket.title_version, ticket.title_id(), ticket.common_key_index == 2)?;
     println!("  Ticket Version: {}", ticket.ticket_version);
     let signature_issuer = String::from_utf8(Vec::from(ticket.signature_issuer)).unwrap_or_default();
     if signature_issuer.contains("XS00000003") {
@@ -196,8 +196,8 @@ fn print_wad_info(wad: wad::WAD) -> Result<()> {
     }
     // Create a Title for size info, signing info and TMD/Ticket info.
     let title = title::Title::from_wad(&wad).with_context(|| "The provided WAD file could not be parsed, and is likely invalid.")?;
-    let min_size_blocks = title.title_size_blocks(None)?;
-    let max_size_blocks = title.title_size_blocks(Some(true))?;
+    let min_size_blocks = title::bytes_to_blocks(title.title_size(None)?);
+    let max_size_blocks = title::bytes_to_blocks(title.title_size(Some(true))?);
     if min_size_blocks == max_size_blocks {
         println!("  Installed Size: {} blocks", min_size_blocks);
     } else {

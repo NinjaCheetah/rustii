@@ -5,10 +5,13 @@
 
 use std::{str, fs, fmt};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use anyhow::{bail, Context, Result};
 use clap::{Subcommand, Args};
 use glob::glob;
+use hex::FromHex;
 use rand::prelude::*;
+use regex::RegexBuilder;
 use rustii::title::{cert, crypto, tmd, ticket, content, wad};
 use rustii::title;
 
@@ -41,6 +44,16 @@ pub enum Commands {
         output: Option<String>,
         #[command(flatten)]
         target: ConvertTargets,
+    },
+    /// Edit the properties of a WAD file
+    Edit {
+        /// The path to the WAD to modify
+        input: String,
+        /// An optional output path; defaults to overwriting input WAD file
+        #[arg(short, long)]
+        output: Option<String>,
+        #[command(flatten)]
+        edits: WadModifications
     },
     /// Pack a directory into a WAD file
     Pack {
@@ -110,6 +123,23 @@ pub struct ContentIdentifier {
     cid: Option<String>,
 }
 
+#[derive(Args)]
+#[clap(next_help_heading = "Possible Modifications")]
+#[group(multiple = true, required = true)]
+pub struct WadModifications {
+    /// A new IOS version for this WAD (formatted as the decimal IOS version, e.g. 58, with a valid
+    /// range of 3-255)
+    #[arg(long)]
+    ios: Option<u8>,
+    /// A new Title ID for this WAD (formatted as 4 ASCII characters, e.g. HADE)
+    #[arg(long)]
+    tid: Option<String>,
+    /// A new type for this WAD (valid options are "System", "Channel", "SystemChannel",
+    /// "GameChannel", "DLC", "HiddenChannel")
+    #[arg(long)]
+    r#type: Option<String>,
+}
+
 enum Target {
     Retail,
     Dev,
@@ -148,7 +178,7 @@ pub fn add_wad(input: &str, content: &str, output: &Option<String>, cid: &Option
             "normal" => tmd::ContentType::Normal,
             "shared" => tmd::ContentType::Shared,
             "dlc" => tmd::ContentType::DLC,
-            _ => bail!("The specified content type \"{}\" is invalid!", ctype.clone().unwrap()),
+            _ => bail!("The specified content type \"{}\" is invalid! Try --help to see valid types.", ctype.clone().unwrap()),
         }
     } else {
         println!("Using default type \"Normal\" because no content type was specified.");
@@ -226,21 +256,21 @@ pub fn convert_wad(input: &str, target: &ConvertTargets, output: &Option<String>
         Target::Dev => {
             title.tmd.set_signature_issuer(String::from("Root-CA00000002-CP00000007"))?;
             title.ticket.set_signature_issuer(String::from("Root-CA00000002-XS00000006"))?;
-            title_key_new = crypto::encrypt_title_key(title_key, 0, title.ticket.title_id, true);
+            title_key_new = crypto::encrypt_title_key(title_key, 0, title.ticket.title_id(), true);
             title.ticket.common_key_index = 0;
             title.tmd.is_vwii = 0;
         },
         Target::Retail => {
             title.tmd.set_signature_issuer(String::from("Root-CA00000001-CP00000004"))?;
             title.ticket.set_signature_issuer(String::from("Root-CA00000001-XS00000003"))?;
-            title_key_new = crypto::encrypt_title_key(title_key, 0, title.ticket.title_id, false);
+            title_key_new = crypto::encrypt_title_key(title_key, 0, title.ticket.title_id(), false);
             title.ticket.common_key_index = 0;
             title.tmd.is_vwii = 0;
         },
         Target::Vwii => {
             title.tmd.set_signature_issuer(String::from("Root-CA00000001-CP00000004"))?;
             title.ticket.set_signature_issuer(String::from("Root-CA00000001-XS00000003"))?;
-            title_key_new = crypto::encrypt_title_key(title_key, 2, title.ticket.title_id, false);
+            title_key_new = crypto::encrypt_title_key(title_key, 2, title.ticket.title_id(), false);
             title.ticket.common_key_index = 2;
             title.tmd.is_vwii = 1;
         }
@@ -249,6 +279,70 @@ pub fn convert_wad(input: &str, target: &ConvertTargets, output: &Option<String>
     title.fakesign()?;
     fs::write(&out_path, title.to_wad()?.to_bytes()?)?;
     println!("Successfully converted {} WAD to {} WAD \"{}\"!", source, target, out_path.file_name().unwrap().to_str().unwrap());
+    Ok(())
+}
+
+pub fn edit_wad(input: &str, output: &Option<String>, edits: &WadModifications) -> Result<()> {
+    let in_path = Path::new(input);
+    if !in_path.exists() {
+        bail!("Source directory \"{}\" does not exist.", in_path.display());
+    }
+    let out_path = if output.is_some() {
+        PathBuf::from(output.clone().unwrap()).with_extension("wad")
+    } else {
+        in_path.to_path_buf()
+    };
+    let mut title = title::Title::from_bytes(&fs::read(in_path)?).with_context(|| "The provided WAD file could not be parsed, and is likely invalid.")?;
+    // Parse possible edits and perform each one provided. Unlike WiiPy, I don't need a state bool
+    // here! Wow!
+    let mut changes_summary: Vec<String> = Vec::new();
+    // These are joined, because that way if both are selected we only need to set the TID (and by
+    // extension, re-encrypt the Title Key) a single time.
+    if edits.tid.is_some() || edits.r#type.is_some() {
+        let tid_high = if edits.r#type.is_some() {
+            let new_type = match edits.r#type.clone().unwrap().to_ascii_lowercase().as_str() {
+                "system" => tmd::TitleType::System,
+                "channel" => tmd::TitleType::Channel,
+                "systemchannel" => tmd::TitleType::SystemChannel,
+                "gamechannel" => tmd::TitleType::GameChannel,
+                "dlc" => tmd::TitleType::DLC,
+                "hiddenchannel" => tmd::TitleType::HiddenChannel,
+                _ => bail!("The specified title type \"{}\" is invalid! Try --help to see valid types.", edits.r#type.clone().unwrap()),
+            };
+            changes_summary.push(format!("Changed title type from \"{}\" to \"{}\"", title.tmd.title_type()?, new_type));
+            Vec::from_hex(format!("{:08X}", new_type as u32))?
+        } else {
+            title.tmd.title_id()[0..4].to_vec()
+        };
+        let tid_low = if edits.tid.is_some() {
+            let re = RegexBuilder::new(r"^[a-z0-9!@#$%^&*]{4}$").case_insensitive(true).build()?;
+            let new_tid_low = edits.tid.clone().unwrap().to_ascii_uppercase();
+            if !re.is_match(&new_tid_low) {
+                bail!("The specified Title ID is not valid! The new Title ID must be 4 characters and include only letters, numbers, and the special characters \"!@#$%&*\".");
+            }
+            changes_summary.push(format!("Changed Title ID from \"{}\" to \"{}\"", hex::encode(&title.tmd.title_id()[4..8]).to_ascii_uppercase(), hex::encode(&new_tid_low).to_ascii_uppercase()));
+            Vec::from_hex(hex::encode(new_tid_low))?
+        } else {
+            title.tmd.title_id()[4..8].to_vec()
+        };
+        let new_tid: Vec<u8> = tid_high.iter().chain(&tid_low).copied().collect();
+        title.set_title_id(new_tid.try_into().unwrap())?;
+    }
+    if edits.ios.is_some() {
+        let new_ios = edits.ios.unwrap();
+        if new_ios < 3 {
+            bail!("The specified IOS version is not valid! The new IOS version must be between 3 and 255.")
+        }
+        let new_ios_tid = <[u8; 8]>::from_hex(format!("00000001{:08X}", new_ios))?;
+        changes_summary.push(format!("Changed required IOS from IOS{} to IOS{}", title.tmd.ios_tid().last().unwrap(), new_ios));
+        title.tmd.set_ios_tid(new_ios_tid)?;
+    }
+    title.fakesign()?;
+    fs::write(&out_path, title.to_wad()?.to_bytes()?).with_context(|| format!("Could not open output file \"{}\" for writing.", out_path.display()))?;
+    println!("Successfully edited WAD file \"{}\"!\nSummary of changes:", out_path.display());
+    for change in &changes_summary {
+        println!(" - {}", change);
+    }
     Ok(())
 }
 
@@ -295,10 +389,11 @@ pub fn pack_wad(input: &str, output: &str) -> Result<()> {
         footer = fs::read(&footer_files[0]).with_context(|| "Could not open footer file for reading.")?;
     }
     // Iterate over expected content and read it into a content region.
-    let mut content_region = content::ContentRegion::new(tmd.content_records.clone())?;
-    for content in tmd.content_records.borrow().iter() {
-        let data = fs::read(format!("{}/{:08X}.app", in_path.display(), content.index)).with_context(|| format!("Could not open content file \"{:08X}.app\" for reading.", content.index))?;
-        content_region.set_content(&data, content.index as usize, None, None, tik.dec_title_key())
+    let mut content_region = content::ContentRegion::new(Rc::clone(&tmd.content_records))?;
+    let content_indexes: Vec<u16> = tmd.content_records.borrow().iter().map(|record| record.index).collect();
+    for index in content_indexes {
+        let data = fs::read(format!("{}/{:08X}.app", in_path.display(), index)).with_context(|| format!("Could not open content file \"{:08X}.app\" for reading.", index))?;
+        content_region.set_content(&data, index as usize, None, None, tik.dec_title_key())
             .with_context(|| "Failed to load content into the ContentRegion.")?;
     }
     // Ensure that the TMD is modified with our potentially updated content records.
@@ -317,7 +412,7 @@ pub fn pack_wad(input: &str, output: &str) -> Result<()> {
         }
     }
     fs::write(&out_path, wad.to_bytes()?).with_context(|| format!("Could not open output file \"{}\" for writing.", out_path.display()))?;
-    println!("WAD file packed!");
+    println!("Successfully packed WAD file to \"{}\"!", out_path.display());
     Ok(())
 }
 
@@ -414,7 +509,7 @@ pub fn unpack_wad(input: &str, output: &str) -> Result<()> {
     }
     let wad_file = fs::read(in_path).with_context(|| format!("Failed to open WAD file \"{}\" for reading.", in_path.display()))?;
     let title = title::Title::from_bytes(&wad_file).with_context(|| format!("The provided WAD file \"{}\" appears to be invalid.", in_path.display()))?;
-    let tid = hex::encode(title.tmd.title_id);
+    let tid = hex::encode(title.tmd.title_id());
     // Create output directory if it doesn't exist.
     let out_path = Path::new(output);
     if !out_path.exists() {
@@ -435,6 +530,6 @@ pub fn unpack_wad(input: &str, output: &str) -> Result<()> {
         let dec_content = title.get_content_by_index(i).with_context(|| format!("Failed to unpack content with Content ID {:08X}.", title.content.content_records.borrow()[i].content_id))?;
         fs::write(Path::join(out_path, content_file_name), dec_content).with_context(|| format!("Failed to open content file \"{:08X}.app\" for writing.", title.content.content_records.borrow()[i].content_id))?;
     }
-    println!("WAD file unpacked!");
+    println!("Successfully unpacked WAD file to \"{}\"!", out_path.display());
     Ok(())
 }

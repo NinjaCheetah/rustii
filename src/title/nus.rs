@@ -83,7 +83,7 @@ pub fn download_contents(tmd: &tmd::TMD, wiiu_endpoint: bool) -> Result<Vec<Vec<
     let content_ids: Vec<u32> = tmd.content_records.borrow().iter().map(|record| { record.content_id }).collect();
     let mut contents: Vec<Vec<u8>> = Vec::new();
     for id in content_ids {
-        contents.push(download_content(tmd.title_id, id, wiiu_endpoint)?);
+        contents.push(download_content(tmd.title_id(), id, wiiu_endpoint)?);
     }
     Ok(contents)
 }

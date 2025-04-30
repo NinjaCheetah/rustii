@@ -22,7 +22,7 @@ pub enum Commands {
         cid: String,
         /// The title version that the content belongs to (only required for decryption)
         #[arg(short, long)]
-        version: Option<String>,
+        version: Option<u16>,
         /// An optional content file name; defaults to <cid>(.app)
         #[arg(short, long)]
         output: Option<String>,
@@ -44,7 +44,7 @@ pub enum Commands {
         tid: String,
         /// The version of the Title to download
         #[arg(short, long)]
-        version: Option<String>,
+        version: Option<u16>,
         #[command(flatten)]
         output: TitleOutputType,
     },
@@ -54,7 +54,7 @@ pub enum Commands {
         tid: String,
         /// The version of the TMD to download
         #[arg(short, long)]
-        version: Option<String>,
+        version: Option<u16>,
         /// An optional TMD name; defaults to <tid>.tmd
         #[arg(short, long)]
         output: Option<String>,
@@ -73,7 +73,7 @@ pub struct TitleOutputType {
     wad: Option<String>,
 }
 
-pub fn download_content(tid: &str, cid: &str, version: &Option<String>, output: &Option<String>, decrypt: &bool) -> Result<()> {
+pub fn download_content(tid: &str, cid: &str, version: &Option<u16>, output: &Option<String>, decrypt: &bool) -> Result<()> {
     println!("Downloading content with Content ID {cid}...");
     if tid.len() != 16 {
         bail!("The specified Title ID is invalid!");
@@ -92,7 +92,7 @@ pub fn download_content(tid: &str, cid: &str, version: &Option<String>, output: 
         // We need the version to get the correct TMD because the content's index is the IV for
         // decryption. A Ticket also needs to be available, of course.
         let version: u16 = if version.is_some() {
-            version.clone().unwrap().parse().with_context(|| "The specified Title version must be a valid integer!")?
+            version.unwrap()
         } else {
             bail!("You must specify the title version that the requested content belongs to for decryption!");
         };
@@ -159,7 +159,7 @@ fn download_title_dir(title: title::Title, output: String) -> Result<()> {
     } else {
         fs::create_dir(&out_path).with_context(|| format!("The output directory \"{}\" could not be created.", out_path.display()))?;
     }
-    let tid = hex::encode(title.tmd.title_id);
+    let tid = hex::encode(title.tmd.title_id());
     println!("  - Saving TMD...");
     fs::write(out_path.join(format!("{}.tmd", &tid)), title.tmd.to_bytes()?).with_context(|| format!("Failed to open TMD file \"{}.tmd\" for writing.", tid))?;
     println!("  - Saving Ticket...");
@@ -186,7 +186,7 @@ fn download_title_dir_enc(tmd: tmd::TMD, content_region: content::ContentRegion,
     } else {
         fs::create_dir(&out_path).with_context(|| format!("The output directory \"{}\" could not be created.", out_path.display()))?;
     }
-    let tid = hex::encode(tmd.title_id);
+    let tid = hex::encode(tmd.title_id());
     println!("  - Saving TMD...");
     fs::write(out_path.join(format!("{}.tmd", &tid)), tmd.to_bytes()?).with_context(|| format!("Failed to open TMD file \"{}.tmd\" for writing.", tid))?;
     println!("  - Saving certificate chain...");
@@ -205,11 +205,11 @@ fn download_title_wad(title: title::Title, output: String) -> Result<()> {
     println!(" - Packing WAD...");
     let out_path = PathBuf::from(output).with_extension("wad");
     fs::write(&out_path, title.to_wad().with_context(|| "A WAD could not be packed.")?.to_bytes()?).with_context(|| format!("Could not open WAD file \"{}\" for writing.", out_path.display()))?;
-    println!("Successfully downloaded title with Title ID {} to WAD file \"{}\"!", hex::encode(title.tmd.title_id), out_path.display());
+    println!("Successfully downloaded title with Title ID {} to WAD file \"{}\"!", hex::encode(title.tmd.title_id()), out_path.display());
     Ok(())
 }
 
-pub fn download_title(tid: &str, version: &Option<String>, output: &TitleOutputType) -> Result<()> {
+pub fn download_title(tid: &str, version: &Option<u16>, output: &TitleOutputType) -> Result<()> {
     if tid.len() != 16 {
         bail!("The specified Title ID is invalid!");
     }
@@ -218,14 +218,9 @@ pub fn download_title(tid: &str, version: &Option<String>, output: &TitleOutputT
     } else {
         println!("Downloading title {} vLatest, please wait...", tid);
     }
-    let version: Option<u16> = if version.is_some() {
-        Some(version.clone().unwrap().parse().with_context(|| "The specified Title version must be a valid integer!")?)
-    } else {
-        None
-    };
     let tid: [u8; 8] = hex::decode(tid)?.try_into().unwrap();
     println!(" - Downloading and parsing TMD...");
-    let tmd = tmd::TMD::from_bytes(&nus::download_tmd(tid, version, true).with_context(|| "TMD data could not be downloaded.")?)?;
+    let tmd = tmd::TMD::from_bytes(&nus::download_tmd(tid, *version, true).with_context(|| "TMD data could not be downloaded.")?)?;
     println!(" - Downloading and parsing Ticket...");
     let tik_res = &nus::download_ticket(tid, true);
     let tik = match tik_res {
@@ -266,12 +261,7 @@ pub fn download_title(tid: &str, version: &Option<String>, output: &TitleOutputT
     Ok(())
 }
 
-pub fn download_tmd(tid: &str, version: &Option<String>, output: &Option<String>) -> Result<()> {
-    let version: Option<u16> = if version.is_some() {
-        Some(version.clone().unwrap().parse().with_context(|| "The specified TMD version must be a valid integer!")?)
-    } else {
-        None
-    };
+pub fn download_tmd(tid: &str, version: &Option<u16>, output: &Option<String>) -> Result<()> {
     println!("Downloading TMD for title {tid}...");
     if tid.len() != 16 {
         bail!("The specified Title ID is invalid!");
@@ -284,7 +274,7 @@ pub fn download_tmd(tid: &str, version: &Option<String>, output: &Option<String>
         PathBuf::from(format!("{}.tmd", tid))
     };
     let tid: [u8; 8] = hex::decode(tid)?.try_into().unwrap();
-    let tmd_data = nus::download_tmd(tid, version, true).with_context(|| "TMD data could not be downloaded.")?;
+    let tmd_data = nus::download_tmd(tid, *version, true).with_context(|| "TMD data could not be downloaded.")?;
     fs::write(&out_path, tmd_data)?;
     println!("Successfully downloaded TMD to \"{}\"!", out_path.display());
     Ok(())

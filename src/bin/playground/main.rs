@@ -7,7 +7,7 @@ use rustii::title;
 fn main() {
     let data = fs::read("sm.wad").unwrap();
     let title = title::Title::from_bytes(&data).unwrap();
-    println!("Title ID from WAD via Title object: {}", hex::encode(title.tmd.title_id));
+    println!("Title ID from WAD via Title object: {}", hex::encode(title.tmd.title_id()));
     
     let wad = wad::WAD::from_bytes(&data).unwrap();
     println!("size of tmd: {:?}", wad.tmd().len());

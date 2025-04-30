@@ -125,6 +125,9 @@ fn main() -> Result<()> {
                 title::wad::Commands::Convert { input, target, output } => {
                     title::wad::convert_wad(input, target, output)?
                 },
+                title::wad::Commands::Edit { input, output, edits } => {
+                    title::wad::edit_wad(input, output, edits)?
+                },
                 title::wad::Commands::Pack { input, output} => {
                     title::wad::pack_wad(input, output)?
                 },

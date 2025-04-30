@@ -7,6 +7,7 @@ use std::io::{Cursor, Read, Write};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use sha1::{Sha1, Digest};
 use thiserror::Error;
+use crate::title::crypto;
 use crate::title::crypto::decrypt_title_key;
 
 #[derive(Debug, Error)]
@@ -43,7 +44,7 @@ pub struct Ticket {
     unknown1: [u8; 1],
     pub ticket_id: [u8; 8],
     pub console_id: [u8; 4],
-    pub title_id: [u8; 8],
+    title_id: [u8; 8],
     unknown2: [u8; 2],
     pub title_version: u16,
     pub permitted_titles_mask: [u8; 4],
@@ -230,6 +231,20 @@ impl Ticket {
         let mut issuer = signature_issuer.into_bytes();
         issuer.resize(64, 0);
         self.signature_issuer = issuer.try_into().unwrap();
+        Ok(())
+    }
+    
+    /// Gets the Title ID of the Ticket.
+    pub fn title_id(&self) -> [u8; 8] {
+        self.title_id
+    }
+    
+    /// Sets a new Title ID for the Ticket. This will re-encrypt the Title Key, since the Title ID
+    /// is used as the IV for decrypting the Title Key.
+    pub fn set_title_id(&mut self, title_id: [u8; 8]) -> Result<(), TicketError> {
+        let new_enc_title_key = crypto::encrypt_title_key(self.dec_title_key(), self.common_key_index, title_id, self.is_dev());
+        self.title_key = new_enc_title_key;
+        self.title_id = title_id;
         Ok(())
     }
 }

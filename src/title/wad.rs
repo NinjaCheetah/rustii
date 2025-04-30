@@ -68,7 +68,7 @@ impl WADHeader {
         // Generates a new WADHeader from a populated WADBody object.
         // Parse the TMD and use that to determine if this is a standard WAD or a boot2 WAD.
         let tmd = tmd::TMD::from_bytes(&body.tmd).map_err(WADError::TMD)?;
-        let wad_type = match hex::encode(tmd.title_id).as_str() {
+        let wad_type = match hex::encode(tmd.title_id()).as_str() {
             "0000000100000001" => WADType::ImportBoot,
             _ => WADType::Installable,
         };
