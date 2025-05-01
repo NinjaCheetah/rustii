@@ -4,4 +4,5 @@
 // Root level module that imports the feature modules.
 
 pub mod archive;
+pub mod nand;
 pub mod title;

@@ -7,6 +7,7 @@ mod archive;
 mod title;
 mod filetypes;
 mod info;
+mod nand;
 
 use anyhow::Result;
 use clap::{Subcommand, Parser};
@@ -25,6 +26,11 @@ enum Commands {
     Ash {
         #[command(subcommand)]
         command: archive::ash::Commands,
+    },
+    /// Manage Wii EmuNANDs
+    EmuNAND {
+        #[command(subcommand)]
+        command: nand::emunand::Commands,
     },
     /// Fakesign a TMD, Ticket, or WAD (trucha bug)
     Fakesign {
@@ -49,6 +55,11 @@ enum Commands {
         #[command(subcommand)]
         command: title::nus::Commands
     },
+    /// Manage setting.txt
+    Setting {
+        #[command(subcommand)]
+        command: nand::setting::Commands
+    },
     /// Pack/unpack a U8 archive
     U8 {
         #[command(subcommand)]
@@ -72,6 +83,16 @@ fn main() -> Result<()> {
                 },
                 archive::ash::Commands::Decompress { input, output } => {
                     archive::ash::decompress_ash(input, output)?
+                }
+            }
+        },
+        Some(Commands::EmuNAND { command }) => {
+            match command {
+                nand::emunand::Commands::Debug { input } => {
+                    nand::emunand::debug(input)?
+                },
+                nand::emunand::Commands::InstallTitle { wad, emunand } => {
+                    nand::emunand::install_title(wad, emunand)?
                 }
             }
         }
@@ -106,7 +127,17 @@ fn main() -> Result<()> {
                     title::nus::download_tmd(tid, version, output)?
                 }
             }
-        }
+        },
+        Some(Commands::Setting { command }) => {
+            match command {
+                nand::setting::Commands::Decrypt { input, output } => {
+                    nand::setting::decrypt_setting(input, output)?;
+                },
+                nand::setting::Commands::Encrypt { input, output } => {
+                    nand::setting::encrypt_setting(input, output)?;
+                }
+            }
+        },
         Some(Commands::U8 { command }) => {
             match command {
                 archive::u8::Commands::Pack { input, output } => {

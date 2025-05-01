@@ -3,6 +3,7 @@
 use std::fs;
 use rustii::title::{wad, cert};
 use rustii::title;
+// use rustii::title::content;
 
 fn main() {
     let data = fs::read("sm.wad").unwrap();
@@ -41,8 +42,17 @@ fn main() {
     
     let result = title.verify().unwrap();
     println!("full title verified successfully: {}", result);
+    
+    
+    
     // let mut u8_archive = u8::U8Archive::from_bytes(&fs::read("00000001.app").unwrap()).unwrap();
     // println!("files and dirs counted: {}", u8_archive.node_tree.borrow().count());
     // fs::write("outfile.arc", u8_archive.to_bytes().unwrap()).unwrap();
     // println!("re-written");
+    
+    
+    
+    // let mut content_map = content::SharedContentMap::from_bytes(&fs::read("content.map").unwrap()).unwrap();
+    // content_map.add(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]).unwrap();
+    // fs::write("new.map", content_map.to_bytes().unwrap()).unwrap();
 }

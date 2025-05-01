@@ -124,50 +124,50 @@ impl TMD {
     /// Creates a new TMD instance from the binary data of a TMD file.
     pub fn from_bytes(data: &[u8]) -> Result<Self, TMDError> {
         let mut buf = Cursor::new(data);
-        let signature_type = buf.read_u32::<BigEndian>().map_err(TMDError::IO)?;
+        let signature_type = buf.read_u32::<BigEndian>()?;
         let mut signature = [0u8; 256];
-        buf.read_exact(&mut signature).map_err(TMDError::IO)?;
+        buf.read_exact(&mut signature)?;
         // Maybe this can be read differently?
         let mut padding1 = [0u8; 60];
-        buf.read_exact(&mut padding1).map_err(TMDError::IO)?;
+        buf.read_exact(&mut padding1)?;
         let mut signature_issuer = [0u8; 64];
-        buf.read_exact(&mut signature_issuer).map_err(TMDError::IO)?;
-        let tmd_version = buf.read_u8().map_err(TMDError::IO)?;
-        let ca_crl_version = buf.read_u8().map_err(TMDError::IO)?;
-        let signer_crl_version = buf.read_u8().map_err(TMDError::IO)?;
-        let is_vwii = buf.read_u8().map_err(TMDError::IO)?;
+        buf.read_exact(&mut signature_issuer)?;
+        let tmd_version = buf.read_u8()?;
+        let ca_crl_version = buf.read_u8()?;
+        let signer_crl_version = buf.read_u8()?;
+        let is_vwii = buf.read_u8()?;
         let mut ios_tid = [0u8; 8];
-        buf.read_exact(&mut ios_tid).map_err(TMDError::IO)?;
+        buf.read_exact(&mut ios_tid)?;
         let mut title_id = [0u8; 8];
-        buf.read_exact(&mut title_id).map_err(TMDError::IO)?;
+        buf.read_exact(&mut title_id)?;
         let mut title_type = [0u8; 4];
-        buf.read_exact(&mut title_type).map_err(TMDError::IO)?;
-        let group_id = buf.read_u16::<BigEndian>().map_err(TMDError::IO)?;
+        buf.read_exact(&mut title_type)?;
+        let group_id = buf.read_u16::<BigEndian>()?;
         // Same here...
         let mut padding2 = [0u8; 2];
-        buf.read_exact(&mut padding2).map_err(TMDError::IO)?;
-        let region = buf.read_u16::<BigEndian>().map_err(TMDError::IO)?;
+        buf.read_exact(&mut padding2)?;
+        let region = buf.read_u16::<BigEndian>()?;
         let mut ratings = [0u8; 16];
-        buf.read_exact(&mut ratings).map_err(TMDError::IO)?;
+        buf.read_exact(&mut ratings)?;
         // ...and here...
         let mut reserved1 = [0u8; 12];
-        buf.read_exact(&mut reserved1).map_err(TMDError::IO)?;
+        buf.read_exact(&mut reserved1)?;
         let mut ipc_mask = [0u8; 12];
-        buf.read_exact(&mut ipc_mask).map_err(TMDError::IO)?;
+        buf.read_exact(&mut ipc_mask)?;
         // ...and here.
         let mut reserved2 = [0u8; 18];
-        buf.read_exact(&mut reserved2).map_err(TMDError::IO)?;
-        let access_rights = buf.read_u32::<BigEndian>().map_err(TMDError::IO)?;
-        let title_version = buf.read_u16::<BigEndian>().map_err(TMDError::IO)?;
-        let num_contents = buf.read_u16::<BigEndian>().map_err(TMDError::IO)?;
-        let boot_index = buf.read_u16::<BigEndian>().map_err(TMDError::IO)?;
-        let minor_version = buf.read_u16::<BigEndian>().map_err(TMDError::IO)?;
+        buf.read_exact(&mut reserved2)?;
+        let access_rights = buf.read_u32::<BigEndian>()?;
+        let title_version = buf.read_u16::<BigEndian>()?;
+        let num_contents = buf.read_u16::<BigEndian>()?;
+        let boot_index = buf.read_u16::<BigEndian>()?;
+        let minor_version = buf.read_u16::<BigEndian>()?;
         // Build content records by iterating over the rest of the data num_contents times.
         let mut content_records = Vec::with_capacity(num_contents as usize);
         for _ in 0..num_contents {
-            let content_id = buf.read_u32::<BigEndian>().map_err(TMDError::IO)?;
-            let index = buf.read_u16::<BigEndian>().map_err(TMDError::IO)?;
-            let type_int = buf.read_u16::<BigEndian>().map_err(TMDError::IO)?;
+            let content_id = buf.read_u32::<BigEndian>()?;
+            let index = buf.read_u16::<BigEndian>()?;
+            let type_int = buf.read_u16::<BigEndian>()?;
             let content_type = match type_int {
                 1 => ContentType::Normal,
                 2 => ContentType::Development,
@@ -176,9 +176,9 @@ impl TMD {
                 32769 => ContentType::Shared,
                 _ => return Err(TMDError::InvalidContentType(type_int))
             };
-            let content_size = buf.read_u64::<BigEndian>().map_err(TMDError::IO)?;
+            let content_size = buf.read_u64::<BigEndian>()?;
             let mut content_hash = [0u8; 20];
-            buf.read_exact(&mut content_hash).map_err(TMDError::IO)?;
+            buf.read_exact(&mut content_hash)?;
             content_records.push(ContentRecord {
                 content_id,
                 index,
