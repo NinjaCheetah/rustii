@@ -36,7 +36,6 @@ impl SettingTxt {
         }
         let setting_str = String::from_utf8_lossy(&dec_data);
         let setting_str = setting_str[0..setting_str.clone().rfind('\n').unwrap_or(setting_str.len() - 2) + 1].to_string();
-        println!("{:?}", setting_str);
         let setting_txt = SettingTxt::from_string(setting_str)?;
         Ok(setting_txt)
     }
@@ -45,7 +44,6 @@ impl SettingTxt {
     pub fn from_string(data: String) -> Result<Self, std::io::Error> {
         let mut setting_keys: HashMap<String, String> = HashMap::new();
         for line in data.lines() {
-            println!("{}", line);
             let (key, value) = line.split_once("=").unwrap();
             setting_keys.insert(key.to_owned(), value.to_owned());
         }

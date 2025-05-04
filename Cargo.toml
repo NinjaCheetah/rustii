@@ -37,3 +37,4 @@ anyhow = "1"
 thiserror = "2"
 reqwest = { version = "0", features = ["blocking"] }
 rand = "0"
+walkdir = "2"

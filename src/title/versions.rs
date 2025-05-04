@@ -78,8 +78,6 @@ pub fn dec_to_standard(version: u16, title_id: &str, vwii: Option<bool>) -> Opti
         let map = wii_menu_versions_map(vwii);
         map.get(&version).cloned()
     } else {
-        let version_upper = (version as f64 / 256.0).floor() as u16;
-        let version_lower = version % 256;
-        Some(format!("{}.{}", version_upper, version_lower))
+        Some(format!("{}.{}", version >> 8, version & 0xF))
     }
 }

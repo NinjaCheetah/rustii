@@ -28,7 +28,7 @@ enum Commands {
         command: archive::ash::Commands,
     },
     /// Manage Wii EmuNANDs
-    EmuNAND {
+    Emunand {
         #[command(subcommand)]
         command: nand::emunand::Commands,
     },
@@ -86,13 +86,19 @@ fn main() -> Result<()> {
                 }
             }
         },
-        Some(Commands::EmuNAND { command }) => {
+        Some(Commands::Emunand { command }) => {
             match command {
-                nand::emunand::Commands::Debug { input } => {
-                    nand::emunand::debug(input)?
+                nand::emunand::Commands::Info { emunand } => {
+                    nand::emunand::info(emunand)?
                 },
-                nand::emunand::Commands::InstallTitle { wad, emunand } => {
-                    nand::emunand::install_title(wad, emunand)?
+                nand::emunand::Commands::InstallMissing { emunand, vwii } => {
+                    nand::emunand::install_missing(emunand, vwii)?
+                },
+                nand::emunand::Commands::InstallTitle { wad, emunand, override_meta} => {
+                    nand::emunand::install_title(wad, emunand, override_meta)?
+                },
+                nand::emunand::Commands::UninstallTitle { tid, emunand, remove_ticket } => {
+                    nand::emunand::uninstall_title(tid, emunand, remove_ticket)?
                 }
             }
         }
